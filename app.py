@@ -94,7 +94,7 @@ HTML_PAGE = """
         .secondary-btn:active { background: #475569; }
         ul { padding-left: 0; list-style: none; max-height: 200px; overflow-y: auto; background: #0f172a; border-radius: 8px; padding: 10px; }
         li { font-size: 14px; margin-bottom: 8px; background: #1e293b; padding: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; word-break: break-all; }
-        .screen-preview { width: 100%; height: auto; background: #000; border-radius: 8px; margin-bottom: 12px; border: 1px dashed #475569; overflow: hidden; }
+        .screen-preview { width: 100%; height: auto; background: #000; border-radius: 8px; margin-bottom: 12px; border: 1px dashed #475569; overflow: hidden; min-height: 200px; }
         .screen-preview img { width: 100%; display: block; }
         .view { display: none; }
         .active { display: block; }
@@ -105,7 +105,6 @@ HTML_PAGE = """
 <body>
     <h1>ArchMouse Control</h1>
 
-    <!-- Экран 1: Выбор устройства -->
     <div id="view-devices" class="card active">
         <h3>🔗 Подключение</h3>
         <p style="font-size: 13px; color: #94a3b8;">1. Подключись к UxPlay на iPhone.<br>2. Найди ArchMouse в Bluetooth.</p>
@@ -116,12 +115,11 @@ HTML_PAGE = """
         <button class="secondary-btn" onclick="showControlView()" style="margin-top: 15px;">Я уже подключил мышь ➡️</button>
     </div>
 
-    <!-- Экран 2: Контроль и Снимок -->
     <div id="view-control" class="view">
         <div class="card">
             <h3>📱 Экран iPhone (через сервер)</h3>
             <div class="screen-preview">
-                <img src="/video_feed" alt="Ожидание стрима (включи uxplay)...">
+                <img src="/video_feed" alt="Загрузка видеопотока...">
             </div>
         </div>
 
@@ -189,7 +187,7 @@ HTML_PAGE = """
 """
 
 def find_window_geometry(name_containing="OpenGL"):
-    """Находит координаты и размер окна X11 по части имени с отладкой"""
+    """Находит координаты и размер окна X11 по части имени"""
     try:
         d = display.Display()
         root = d.screen().root
@@ -207,11 +205,12 @@ def find_window_geometry(name_containing="OpenGL"):
                 geometry = win.get_geometry()
                 trans = win.translate_coords(root, 0, 0)
                 
+                # Принудительно конвертируем в int, чтобы MSS не падал
                 return {
-                    'left': trans.x,
-                    'top': trans.y,
-                    'width': geometry.width,
-                    'height': geometry.height
+                    'left': int(trans.x),
+                    'top': int(trans.y),
+                    'width': int(geometry.width),
+                    'height': int(geometry.height)
                 }
     except Exception as e:
         print("Ошибка Xlib при поиске окна:", e)
@@ -221,11 +220,11 @@ def generate_frames():
     """Генератор MJPEG-видеопотока с захватом ОКНА UXPLAY"""
     with mss.mss() as sct:
         while True:
-            # Ищем окно с названием, содержащим "OpenGL"
             monitor_bbox = find_window_geometry("OpenGL")
             
             if monitor_bbox is not None:
                 try:
+                    # Захватываем кадр
                     sct_img = sct.grab(monitor_bbox)
                     img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
                     
@@ -238,10 +237,20 @@ def generate_frames():
                            b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
                     
                     time.sleep(0.05)
-                except Exception:
-                    time.sleep(0.2)
-                    pass
+                except Exception as e:
+                    print(f"\n[!] Ошибка создания скриншота MSS: {e}")
+                    print(f"[!] Окно найдено, но координаты кривые: {monitor_bbox}\n")
+                    
+                    # Отдаем темно-красный экран ошибки, чтобы UI не зависал
+                    img = Image.new('RGB', (640, 480), color=(50, 0, 0))
+                    img_io = io.BytesIO()
+                    img.save(img_io, format='JPEG', quality=20)
+                    frame = img_io.getvalue()
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                    time.sleep(1.0)
             else:
+                # Окно не найдено - отдаем черный экран
                 img = Image.new('RGB', (640, 480), color=(0, 0, 0))
                 img_io = io.BytesIO()
                 img.save(img_io, format='JPEG', quality=20)
