@@ -107,7 +107,7 @@ HTML_PAGE = """
         }
         .container {
             display: flex;
-            flex-direction: column; /* Все строго по центру друг под другом */
+            flex-direction: column;
             align-items: center;
             gap: 20px;
             padding: 0 15px;
@@ -120,7 +120,7 @@ HTML_PAGE = """
             border-radius: 24px; 
             box-shadow: 0 10px 40px rgba(0,0,0,0.4); 
             width: 100%; 
-            max-width: 450px; /* Немного расширил карточку */
+            max-width: 450px; 
             text-align: left;
             border: 1px solid var(--border);
             box-sizing: border-box;
@@ -132,10 +132,9 @@ HTML_PAGE = """
         .loader { font-size: 12px; color: var(--accent); font-weight: normal; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
 
-        /* Сетка для девайсов */
         .device-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 15px;
             margin-top: 20px;
             width: 100%;
@@ -164,19 +163,19 @@ HTML_PAGE = """
         
         .device-preview {
             width: 100%;
-            height: 200px; /* Увеличена высота для вертикального экрана */
-            object-fit: contain; /* Теперь экран айфона не обрезается */
+            height: 300px; /* Достаточно высоты для фулл экрана */
+            object-fit: contain; /* Никакой обрезки, вписывает картинку целиком */
             border-radius: 10px;
-            margin-top: 12px;
-            background: #0a0a0a;
-            border: 1px solid #333;
+            margin-top: 16px;
+            background: transparent; /* Убрали уебищный черный фон */
+            border: none;
         }
 
         button { 
             font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
             padding: 14px; margin: 6px 0; cursor: pointer; 
             background: var(--accent); color: #fff; border: none; border-radius: 14px; 
-            transition: 0.2s; width: 100%; display: flex; justify-content: center; gap: 8px;
+            transition: 0.2s; width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px;
         }
         button:hover { background: var(--accent-hover); transform: translateY(-2px); }
         button:active { transform: translateY(0); }
@@ -188,19 +187,17 @@ HTML_PAGE = """
         
         .screen-preview { 
             width: 100%; 
-            background: #0a0a0a; 
-            border-radius: 14px; 
-            margin-bottom: 20px; 
-            border: 1px solid var(--border); 
-            overflow: hidden; 
+            background: transparent; /* Убрали рамки у главного потока тоже */
+            border: none; 
             display: flex; 
             justify-content: center; 
         }
         .screen-preview img { 
             width: 100%; 
-            max-height: 55vh; /* Ограничиваем высоту, чтобы джойстик влезал на экран мобилки */
-            object-fit: contain; /* Картинка полностью вписывается без обрезки */
+            height: 60vh; 
+            object-fit: contain; /* Фулл экран без обрезки */
             display: block; 
+            border-radius: 12px;
         }
         
         .view { display: none; animation: fadeIn 0.4s ease forwards; width: 100%; }
@@ -212,8 +209,10 @@ HTML_PAGE = """
         .d-pad button { width: 64px; height: 64px; padding: 0; border-radius: 18px; background: #1a1a1a; border: 1px solid #333; color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
         .d-pad button:hover { background: #262626; border-color: #444; }
         .d-pad button:active { background: #333; transform: scale(0.92); }
-        .d-pad .click-btn { width: 80px; background: var(--accent); border: none; font-size: 16px; }
+        .d-pad .click-btn { width: 80px; background: var(--accent); border: none; font-size: 16px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); }
         .d-pad .click-btn:hover { background: var(--accent-hover); }
+        
+        svg { width: 24px; height: 24px; }
     </style>
 </head>
 <body>
@@ -224,13 +223,17 @@ HTML_PAGE = """
         <div class="container">
             <div class="card" style="max-width: 600px;">
                 <h3>
-                    🔗 Доступные устройства 
+                    <span>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                        Доступные устройства
+                    </span>
                     <span class="loader" id="scanStatus">Идет поиск...</span>
                 </h3>
-                <div class="device-grid" id="deviceGrid">
-                    <!-- Сюда JS будет добавлять карточки -->
-                </div>
-                <button class="secondary-btn" onclick="showControlView()" style="margin-top: 30px;">Я уже подключил мышь ➡️</button>
+                <div class="device-grid" id="deviceGrid"></div>
+                <button class="secondary-btn" onclick="showControlView()" style="margin-top: 30px;">
+                    Я уже подключил мышь
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </button>
             </div>
         </div>
     </div>
@@ -248,16 +251,31 @@ HTML_PAGE = """
             <div class="card">
                 <h3>🖱️ Управление</h3>
                 <div class="d-pad">
-                    <div class="d-pad-row"><button onclick="move(0, -30)">⬆️</button></div>
                     <div class="d-pad-row">
-                        <button onclick="move(-30, 0)">⬅️</button>
-                        <button class="click-btn" onclick="clickMouse()">Клик</button>
-                        <button onclick="move(30, 0)">➡️</button>
+                        <button onclick="move(0, -30)">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
+                        </button>
                     </div>
-                    <div class="d-pad-row"><button onclick="move(0, 30)">⬇️</button></div>
+                    <div class="d-pad-row">
+                        <button onclick="move(-30, 0)">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                        </button>
+                        <button class="click-btn" onclick="clickMouse()">Клик</button>
+                        <button onclick="move(30, 0)">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </button>
+                    </div>
+                    <div class="d-pad-row">
+                        <button onclick="move(0, 30)">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7 7"></path></svg>
+                        </button>
+                    </div>
                 </div>
                 <br>
-                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 10px;">⬅️ Назад в меню</button>
+                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 10px;">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                    Назад в меню
+                </button>
             </div>
         </div>
     </div>
@@ -294,7 +312,7 @@ HTML_PAGE = """
                 previewIntervals = [];
 
                 if(data.length === 0) {
-                    grid.innerHTML = "<p style='color: #ef4444; width: 100%; text-align: center;'>Эфир чист. Ищу устройства...</p>";
+                    grid.innerHTML = "<p style='color: #ef4444; width: 100%; text-align: center; grid-column: 1/-1;'>Эфир чист. Ищу устройства...</p>";
                     return;
                 }
                 
@@ -381,7 +399,8 @@ def gstreamer_receiver():
             time.sleep(1)
 
 def get_fallback_image():
-    img = Image.new('RGB', (320, 240), color=(15, 15, 15))
+    # Цвет фона совпадает с цветом карточки (1a1a1a), чтобы не было видно квадратов
+    img = Image.new('RGB', (320, 240), color=(26, 26, 26))
     img_io = io.BytesIO()
     img.save(img_io, format='JPEG', quality=20)
     return img_io.getvalue()
