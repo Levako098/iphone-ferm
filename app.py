@@ -18,6 +18,9 @@ from PIL import Image
 app = Flask(__name__)
 hid_instance = None
 
+# Глобальная переменная для хранения последнего готового кадра из GStreamer
+LATEST_FRAME = None
+
 MOUSE_REPORT_MAP = bytes([
     0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, 0x01, 
     0x09, 0x01, 0xA1, 0x00, 0x05, 0x09, 0x19, 0x01, 
@@ -96,13 +99,12 @@ HTML_PAGE = """
             --success-hover: #22c55e;
         }
         body { 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
+            font-family: 'Inter', sans-serif; 
             text-align: center; 
             background: var(--bg-main); 
             color: var(--text-main); 
             margin: 0;
             padding: 30px 0;
-            -webkit-font-smoothing: antialiased;
         }
         .container {
             display: flex;
@@ -122,43 +124,70 @@ HTML_PAGE = """
             border: 1px solid var(--border);
             box-sizing: border-box;
         }
-        h1 { color: #fff; font-size: 26px; font-weight: 700; margin-top: 0; margin-bottom: 30px; letter-spacing: -0.5px; text-shadow: 0 2px 10px rgba(255,255,255,0.05); }
-        h3 { font-size: 18px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-top: 0; margin-bottom: 16px; color: #f5f5f5; }
-        p { color: var(--text-muted); line-height: 1.6; font-size: 14px; margin-bottom: 20px; }
+        .full-width { max-width: 800px; width: 100%; }
         
-        button { 
-            font-family: 'Inter', sans-serif;
-            font-size: 15px; 
-            font-weight: 600;
-            padding: 14px; 
-            margin: 6px 0; 
-            cursor: pointer; 
-            background: var(--accent); 
-            color: #fff; 
-            border: none; 
-            border-radius: 14px; 
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
-            width: 100%; 
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
+        h1 { color: #fff; font-size: 26px; font-weight: 700; margin-top: 0; margin-bottom: 30px; }
+        h3 { font-size: 18px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-top: 0; margin-bottom: 16px; color: #f5f5f5; display: flex; justify-content: space-between; align-items: center; }
+        
+        .loader { font-size: 12px; color: var(--accent); font-weight: normal; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+        /* Сетка для девайсов */
+        .device-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+            align-content: start;
         }
-        button:hover { background: var(--accent-hover); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25); }
+        
+        .device-card {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 16px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 100px;
+        }
+        .device-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.15);
+        }
+        
+        .device-name { font-weight: 600; color: #fff; font-size: 15px; word-break: break-word; }
+        .device-mac { font-size: 11px; color: var(--text-muted); margin-top: 6px; font-family: monospace; }
+        
+        .device-preview {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 10px;
+            margin-top: 12px;
+            background: #000;
+            border: 1px solid #333;
+        }
+
+        button { 
+            font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
+            padding: 14px; margin: 6px 0; cursor: pointer; 
+            background: var(--accent); color: #fff; border: none; border-radius: 14px; 
+            transition: 0.2s; width: 100%; display: flex; justify-content: center; gap: 8px;
+        }
+        button:hover { background: var(--accent-hover); transform: translateY(-2px); }
         button:active { transform: translateY(0); }
         
         .click-btn { background: var(--success); }
-        .click-btn:hover { background: var(--success-hover); box-shadow: 0 4px 12px rgba(22, 163, 74, 0.25); }
+        .click-btn:hover { background: var(--success-hover); }
         .secondary-btn { background: #1f1f1f; color: var(--text-main); border: 1px solid #333; }
-        .secondary-btn:hover { background: #2a2a2a; box-shadow: none; }
+        .secondary-btn:hover { background: #2a2a2a; }
         
-        ul { padding-left: 0; list-style: none; max-height: 220px; overflow-y: auto; background: var(--bg-main); border-radius: 14px; padding: 12px; border: 1px solid var(--border); margin-bottom: 20px; }
-        li { font-size: 14px; margin-bottom: 8px; background: var(--bg-card); padding: 12px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border); transition: 0.2s; }
-        li:hover { border-color: #404040; }
-        li b { color: #fff; }
-        li small { color: var(--text-muted); display: block; margin-top: 4px; font-family: monospace; font-size: 12px; }
-        
-        .screen-preview { width: 100%; height: auto; background: #000; border-radius: 14px; margin-bottom: 20px; border: 1px solid var(--border); overflow: hidden; min-height: 220px; display: flex; justify-content: center; align-items: center; position: relative; }
+        .screen-preview { width: 100%; height: auto; background: #000; border-radius: 14px; margin-bottom: 20px; border: 1px solid var(--border); overflow: hidden; min-height: 220px; display: flex; justify-content: center; }
         .screen-preview img { width: 100%; display: block; object-fit: contain; }
         
         .view { display: none; animation: fadeIn 0.4s ease forwards; }
@@ -167,96 +196,70 @@ HTML_PAGE = """
         
         .d-pad { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 10px; }
         .d-pad-row { display: flex; gap: 10px; justify-content: center; }
-        .d-pad button { 
-            width: 64px; 
-            height: 64px; 
-            padding: 0; 
-            border-radius: 18px; 
-            background: #1a1a1a; 
-            border: 1px solid #333;
-            color: #fff; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15); 
-        }
+        .d-pad button { width: 64px; height: 64px; padding: 0; border-radius: 18px; background: #1a1a1a; border: 1px solid #333; color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
         .d-pad button:hover { background: #262626; border-color: #444; }
         .d-pad button:active { background: #333; transform: scale(0.92); }
-        .d-pad .click-btn { 
-            width: 80px; 
-            background: var(--accent); 
-            border: none;
-            font-size: 16px;
-            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
-        }
+        .d-pad .click-btn { width: 80px; background: var(--accent); border: none; font-size: 16px; }
         .d-pad .click-btn:hover { background: var(--accent-hover); }
         
         svg { width: 22px; height: 22px; }
-        
-        /* Стилизация скроллбара */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: var(--bg-main); border-radius: 8px; }
-        ::-webkit-scrollbar-thumb { background: #333; border-radius: 8px; }
-        ::-webkit-scrollbar-thumb:hover { background: #444; }
     </style>
 </head>
 <body>
     <h1>ArchMouse Control</h1>
 
+    <!-- ЭКРАН 1: Авто-поиск -->
     <div class="container" id="view-devices">
-        <div class="card active">
-            <h3>🔗 Подключение</h3>
-            <p>1. Подключись к UxPlay на iPhone.<br>2. Найди ArchMouse в Bluetooth.</p>
-            <button onclick="scanDevices()">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                Искать устройства
-            </button>
-            <ul id="deviceList">
-                <li style="justify-content: center; color: var(--text-muted); border: none; background: transparent;">Эфир чист...</li>
-            </ul>
-            <button class="secondary-btn" onclick="showControlView()">Я уже подключил мышь ➡️</button>
+        <div class="card full-width active">
+            <h3>
+                🔗 Доступные устройства 
+                <span class="loader" id="scanStatus">Идет поиск...</span>
+            </h3>
+            <div class="device-grid" id="deviceGrid">
+                <!-- Сюда JS будет добавлять карточки -->
+            </div>
+            <button class="secondary-btn" onclick="showControlView()" style="max-width: 300px; margin: 30px auto 0 auto;">Я уже подключил мышь ➡️</button>
         </div>
     </div>
 
+    <!-- ЭКРАН 2: Управление -->
     <div id="view-control" class="view">
         <div class="container">
             <div class="card" style="max-width: 320px;">
                 <h3>📱 Экран iPhone</h3>
                 <div class="screen-preview">
-                    <img id="videoStream" src="" alt="Ожидание трансляции UxPlay...">
+                    <img id="videoStream" src="" alt="Ожидание трансляции...">
                 </div>
             </div>
 
             <div class="card">
                 <h3>🖱️ Управление</h3>
                 <div class="d-pad">
+                    <div class="d-pad-row"><button onclick="move(0, -30)">⬆️</button></div>
                     <div class="d-pad-row">
-                        <button onclick="move(0, -30)">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
-                        </button>
-                    </div>
-                    <div class="d-pad-row">
-                        <button onclick="move(-30, 0)">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                        </button>
+                        <button onclick="move(-30, 0)">⬅️</button>
                         <button class="click-btn" onclick="clickMouse()">Клик</button>
-                        <button onclick="move(30, 0)">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                        </button>
+                        <button onclick="move(30, 0)">➡️</button>
                     </div>
-                    <div class="d-pad-row">
-                        <button onclick="move(0, 30)">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7 7"></path></svg>
-                        </button>
-                    </div>
+                    <div class="d-pad-row"><button onclick="move(0, 30)">⬇️</button></div>
                 </div>
                 <br>
-                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 10px;">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                    Назад в настройки
-                </button>
+                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 10px;">⬅️ Отключиться</button>
             </div>
         </div>
     </div>
 
     <script>
+        let scanInterval;
+        let previewIntervals = [];
+
+        // Запускаем поиск при загрузке страницы
+        window.onload = () => {
+            scanDevices();
+            // Зацикливаем поиск каждые 10 секунд
+            scanInterval = setInterval(scanDevices, 10000);
+        };
+
         function showControlView() {
             document.getElementById('view-devices').style.display = 'none';
             document.getElementById('view-control').classList.add('active');
@@ -270,20 +273,57 @@ HTML_PAGE = """
         }
 
         function scanDevices() {
-            const list = document.getElementById('deviceList');
-            list.innerHTML = "<li style='justify-content: center; color: var(--accent); border: none; background: transparent;'>Сканирование (4 сек)...</li>";
+            document.getElementById('scanStatus').innerText = "Обновление...";
+            
             fetch('/scan').then(res => res.json()).then(data => {
-                list.innerHTML = "";
+                const grid = document.getElementById('deviceGrid');
+                document.getElementById('scanStatus').innerText = "Поиск активен";
+                
+                // Очищаем старые интервалы превьюшек
+                previewIntervals.forEach(clearInterval);
+                previewIntervals = [];
+
                 if(data.length === 0) {
-                    list.innerHTML = "<li style='justify-content: center; color: #ef4444; border: none; background: transparent;'>Устройства не найдены</li>";
+                    grid.innerHTML = "<p style='color: #ef4444; width: 100%; text-align: center;'>Эфир чист. Ищу устройства...</p>";
                     return;
                 }
+                
+                grid.innerHTML = "";
+
                 data.forEach(dev => {
-                    let li = document.createElement('li');
-                    li.innerHTML = `<span><b>${dev.name || "Unknown"}</b><br><small>${dev.address}</small></span>` +
-                                   `<button style="width: auto; padding: 8px 16px; font-size: 13px; margin: 0;" onclick="connectDev('${dev.address}')">OK</button>`;
-                    list.appendChild(li);
+                    const devName = (dev.name || "Unknown").toLowerCase();
+                    const isIOS = devName.includes('iphone') || devName.includes('ipad') || devName.includes('ios');
+                    
+                    let imgId = 'preview-' + dev.address.replace(/:/g, '');
+                    let previewHTML = '';
+                    
+                    if (isIOS) {
+                        previewHTML = `<img id="${imgId}" class="device-preview" src="/snapshot?t=${Date.now()}" alt="iOS Screen">`;
+                    }
+
+                    const card = document.createElement('div');
+                    card.className = 'device-card';
+                    card.onclick = () => connectDev(dev.address);
+                    card.innerHTML = `
+                        <div>
+                            <div class="device-name">${dev.name || "Unknown Device"}</div>
+                            <div class="device-mac">${dev.address}</div>
+                        </div>
+                        ${previewHTML}
+                    `;
+                    grid.appendChild(card);
+
+                    // Если это iOS, вешаем таймер обновления превьюшки каждые 5 сек
+                    if (isIOS) {
+                        const interval = setInterval(() => {
+                            const img = document.getElementById(imgId);
+                            if (img) img.src = "/snapshot?t=" + Date.now();
+                        }, 5000);
+                        previewIntervals.push(interval);
+                    }
                 });
+            }).catch(() => {
+                document.getElementById('scanStatus').innerText = "Ошибка поиска";
             });
         }
 
@@ -299,14 +339,15 @@ HTML_PAGE = """
 </html>
 """
 
-def generate_frames():
-    """Прямой перехват видеопотока из TCP-сокета GStreamer (Без окон и костылей)"""
+def gstreamer_receiver():
+    """Фоновый поток: постоянно читает сокет и обновляет LATEST_FRAME"""
+    global LATEST_FRAME
     while True:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(2.0)
             s.connect(('127.0.0.1', 5001))
-            print("\n[+] Подключились к прямому видеопотоку UxPlay!")
+            print("\n[+] Приемник видеопотока успешно подключился к UxPlay!")
             s.settimeout(None)
             
             buffer = b''
@@ -322,30 +363,44 @@ def generate_frames():
                     
                     if start != -1 and end != -1:
                         if end > start:
-                            frame = buffer[start:end+2]
+                            # Сохраняем последний кадр в глобальную переменную
+                            LATEST_FRAME = buffer[start:end+2]
                             buffer = buffer[end+2:]
-                            yield (b'--frame\r\n'
-                                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
                         else:
                             buffer = buffer[start:]
                     else:
                         break 
-                        
         except Exception:
-            img = Image.new('RGB', (640, 480), color=(15, 15, 15))
-            img_io = io.BytesIO()
-            img.save(img_io, format='JPEG', quality=20)
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + img_io.getvalue() + b'\r\n')
+            # Если uxplay закрыт, ждем секунду и пробуем снова
             time.sleep(1)
+
+def get_fallback_image():
+    """Отдает черную заглушку, если видеопотока нет"""
+    img = Image.new('RGB', (320, 240), color=(15, 15, 15))
+    img_io = io.BytesIO()
+    img.save(img_io, format='JPEG', quality=20)
+    return img_io.getvalue()
 
 @app.route('/')
 def index():
     return render_template_string(HTML_PAGE)
 
+@app.route('/snapshot')
+def snapshot():
+    """Эндпоинт для 5-секундных превьюшек на экране подключения"""
+    frame = LATEST_FRAME if LATEST_FRAME else get_fallback_image()
+    return Response(frame, mimetype='image/jpeg')
+
 @app.route('/video_feed')
 def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    """Генератор живого видеопотока для экрана управления"""
+    def generate():
+        while True:
+            frame = LATEST_FRAME if LATEST_FRAME else get_fallback_image()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            time.sleep(0.05)
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/move')
 def web_move():
@@ -367,9 +422,9 @@ def scan():
     devices = []
     try:
         subprocess.run(["bluetoothctl", "power", "on"], capture_output=True, timeout=2)
-        subprocess.run(["bluetoothctl", "scan", "on"], capture_output=True, timeout=3)
+        subprocess.run(["bluetoothctl", "scan", "on"], capture_output=True, timeout=2)
         out = subprocess.check_output(["bluetoothctl", "devices"], timeout=2).decode("utf-8")
-        subprocess.run(["bluetoothctl", "scan", "off"], capture_output=True, timeout=2)
+        # Не отключаем скан жестко, просто читаем кэш эфира, чтобы не тормозить систему
         for line in out.splitlines():
             parts = line.split(" ", 2)
             if len(parts) >= 3:
@@ -413,6 +468,10 @@ def run_ble_loop():
     asyncio.run(ble_main())
 
 if __name__ == '__main__':
+    # Запускаем фоновый сбор кадров из Gstreamer
+    video_thread = threading.Thread(target=gstreamer_receiver, daemon=True)
+    video_thread.start()
+
     ble_thread = threading.Thread(target=run_ble_loop, daemon=True)
     ble_thread.start()
     
