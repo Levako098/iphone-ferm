@@ -613,8 +613,6 @@ def run_macro():
     nparr = np.frombuffer(LATEST_FRAME, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
-    frame_h, frame_w, _ = img.shape
-    
     try:
         template = cv2.imread(f"{target}.png")
         if template is None:
@@ -630,38 +628,48 @@ def run_macro():
             center_x = max_loc[0] + w // 2
             center_y = max_loc[1] + h // 2
             
-            # Калибровка и перемещение к цели
-            # 1. Уводим курсор в левый верхний угол (0,0)
-            for _ in range(8):
+            # --- МАГИЯ КАЛИБРОВКИ ---
+            
+            # 1. Жестко упираем мышь в левый верхний угол (с запасом 20 раз, чтобы 100% сбить позицию в 0,0)
+            for _ in range(20):
                 send_hid_move(-127, -127, click=0)
                 time.sleep(0.01)
             
-            time.sleep(0.05)
+            time.sleep(0.1)
             
-            # 2. Рассчитываем пропорцию смещения по Bluetooth HID относительно разрешения кадра
-            # Отношение разрешения кадра к виртуальной сетке iOS
-            scale_factor = 0.65 
-            target_dx = center_x * scale_factor
-            target_dy = center_y * scale_factor
+            # 2. НАСТРОЙКА ЧУВСТВИТЕЛЬНОСТИ (МАСШТАБА)
+            # Если мышь НЕДОЛЕТАЕТ до цели (как на скрине) -> Увеличиваем эти цифры (например, до 1.3)
+            # Если ПЕРЕЛЕТАЕТ цель -> Уменьшаем (например, до 0.9)
+            SCALE_X = 1.15
+            SCALE_Y = 1.15
             
-            steps = 20
-            step_x = target_dx / steps
-            step_y = target_dy / steps
+            target_dx = int(center_x * SCALE_X)
+            target_dy = int(center_y * SCALE_Y)
             
-            for _ in range(steps):
-                send_hid_move(step_x, step_y, click=0)
-                time.sleep(0.01)
+            # 3. Едем к цели одинаковыми мелкими шажками, чтобы отключить ускорение мыши iOS
+            step_size = 15
+            current_x, current_y = 0, 0
             
-            time.sleep(0.05)
+            while current_x < target_dx or current_y < target_dy:
+                move_x = min(step_size, target_dx - current_x)
+                move_y = min(step_size, target_dy - current_y)
+                
+                send_hid_move(move_x, move_y, click=0)
+                
+                current_x += move_x
+                current_y += move_y
+                time.sleep(0.015) # Микропауза для плавности
             
-            # 3. Клик
+            time.sleep(0.1) # Ждем, пока курсор остановится
+            
+            # 4. Кликаем
             send_hid_move(0, 0, click=1)
             time.sleep(0.08)
             send_hid_move(0, 0, click=0)
                 
-            return f"Цель {target} найдена (совпадение {match_percent} пунктов). Клик отправлен!"
+            return f"Цель найдена! Двигаемся на X:{target_dx} Y:{target_dy} (Оригинал X:{center_x} Y:{center_y})"
         else:
-            return f"Элемент {target} не найден на экране (совпадение {match_percent} пунктов)."
+            return f"Элемент {target} не найден на экране (совпадение {match_percent}%)."
     except Exception as e:
         return f"Ошибка автоматизации: {str(e)}"
 
