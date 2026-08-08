@@ -3,7 +3,7 @@ import threading
 import subprocess
 import time
 import io
-from Xlib import X, display
+import socket
 from flask import Flask, render_template_string, request, jsonify, Response
 from bluez_peripheral.gatt.service import Service
 from bluez_peripheral.gatt.characteristic import characteristic, CharacteristicFlags as CharFlags
@@ -13,7 +13,6 @@ from bluez_peripheral.advert import Advertisement
 from bluez_peripheral.agent import NoIoAgent
 from dbus_next.service import dbus_property, PropertyAccess
 from dbus_next.signature import Variant
-import mss
 from PIL import Image
 
 app = Flask(__name__)
@@ -117,9 +116,9 @@ HTML_PAGE = """
 
     <div id="view-control" class="view">
         <div class="card">
-            <h3>📱 Экран iPhone (через сервер)</h3>
+            <h3>📱 Экран iPhone (Прямой поток)</h3>
             <div class="screen-preview">
-                <img id="videoStream" src="" alt="Загрузка видеопотока...">
+                <img id="videoStream" src="" alt="Ожидание трансляции UxPlay...">
             </div>
         </div>
 
@@ -170,14 +169,8 @@ HTML_PAGE = """
             });
         }
 
-        function connectDev(addr) {
-            showControlView();
-        }
-
-        function move(x, y) {
-            fetch(`/move?x=${x}&y=${y}`);
-        }
-
+        function connectDev(addr) { showControlView(); }
+        function move(x, y) { fetch(`/move?x=${x}&y=${y}`); }
         function clickMouse() {
             fetch('/move?x=0&y=0&click=1').then(() => {
                 setTimeout(() => fetch('/move?x=0&y=0&click=0'), 100);
@@ -188,76 +181,53 @@ HTML_PAGE = """
 </html>
 """
 
-def find_window_geometry(name_containing="OpenGL"):
-    """Ищет окно и отдает сырые координаты, как есть"""
-    try:
-        d = display.Display()
-        root = d.screen().root
-        
-        net_client_list = d.intern_atom('_NET_CLIENT_LIST')
-        window_ids = root.get_full_property(net_client_list, X.AnyPropertyType)
-        
-        if window_ids is None:
-            return None
-            
-        for win_id in window_ids.value:
-            win = d.create_resource_object('window', win_id)
-            wm_name = win.get_wm_name()
-            if wm_name and name_containing.lower() in wm_name.lower():
-                geometry = win.get_geometry()
-                trans = win.translate_coords(root, 0, 0)
-                
-                return {
-                    'left': int(trans.x),
-                    'top': int(trans.y),
-                    'width': int(geometry.width),
-                    'height': int(geometry.height)
-                }
-    except Exception:
-        pass
-    return None
-
 def generate_frames():
-    """Железобетонный захват: фоткаем весь экран, вырезаем окно средствами PIL"""
-    with mss.MSS() as sct:
-        # Индекс 1 означает первый физический/виртуальный монитор целиком
-        monitor = sct.monitors[1]
-        
-        while True:
-            try:
-                # 1. Безопасно фоткаем ВЕСЬ монитор (никаких ошибок X11 тут быть не может)
-                sct_img = sct.grab(monitor)
-                img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+    """
+    Элегантный метод без костылей:
+    Прямой перехват видеопотока из TCP-сокета GStreamer.
+    """
+    while True:
+        try:
+            # Подключаемся к порту, куда вещает uxplay
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(2.0)
+            s.connect(('127.0.0.1', 5001))
+            print("\n[+] Подключились к прямому видеопотоку UxPlay!")
+            s.settimeout(None)
+            
+            buffer = b''
+            while True:
+                data = s.recv(65536)
+                if not data:
+                    break
+                buffer += data
                 
-                # 2. Ищем координаты окна
-                monitor_bbox = find_window_geometry("OpenGL")
-                
-                # 3. Если окно найдено, вырезаем его из большого скриншота
-                if monitor_bbox is not None:
-                    # Высчитываем безопасные границы для обрезки (чтобы не выйти за пределы картинки)
-                    crop_left = max(0, monitor_bbox['left'])
-                    crop_top = max(0, monitor_bbox['top'])
-                    crop_right = min(monitor['width'], monitor_bbox['left'] + monitor_bbox['width'])
-                    crop_bottom = min(monitor['height'], monitor_bbox['top'] + monitor_bbox['height'])
+                # Ищем начало (FF D8) и конец (FF D9) JPEG-кадра в бинарном потоке
+                while True:
+                    start = buffer.find(b'\xff\xd8')
+                    end = buffer.find(b'\xff\xd9')
                     
-                    # Режем картинку
-                    if crop_right > crop_left and crop_bottom > crop_top:
-                        img = img.crop((crop_left, crop_top, crop_right, crop_bottom))
-                
-                # 4. Отправляем в веб
-                img_io = io.BytesIO()
-                img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-                img.save(img_io, format='JPEG', quality=45)
-                frame = img_io.getvalue()
-                
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                
-                time.sleep(0.05)
-                
-            except Exception as e:
-                print(f"Ошибка кадра: {e}")
-                time.sleep(1)
+                    if start != -1 and end != -1:
+                        if end > start:
+                            # Вырезаем готовый кадр и отправляем в браузер
+                            frame = buffer[start:end+2]
+                            buffer = buffer[end+2:]
+                            yield (b'--frame\r\n'
+                                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                        else:
+                            # Очищаем битый кусок
+                            buffer = buffer[start:]
+                    else:
+                        break # Ждем следующую порцию байтов
+                        
+        except Exception as e:
+            # Если UxPlay не запущен или трансляция еще не пошла - отдаем черную заглушку
+            img = Image.new('RGB', (640, 480), color=(15, 15, 15))
+            img_io = io.BytesIO()
+            img.save(img_io, format='JPEG', quality=20)
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + img_io.getvalue() + b'\r\n')
+            time.sleep(1)
 
 @app.route('/')
 def index():
@@ -274,14 +244,12 @@ def web_move():
         x = int(request.args.get('x', 0))
         y = int(request.args.get('y', 0))
         btn = int(request.args.get('click', 0))
-        
         x_byte = x & 0xff
         y_byte = y & 0xff
-        
         try:
             hid_instance.input_report.changed(bytes([btn, x_byte, y_byte]))
         except Exception as e:
-            print("Ошибка отправки BLE пакета:", e)
+            pass
     return "OK"
 
 @app.route('/scan')
@@ -292,13 +260,12 @@ def scan():
         subprocess.run(["bluetoothctl", "scan", "on"], capture_output=True, timeout=3)
         out = subprocess.check_output(["bluetoothctl", "devices"], timeout=2).decode("utf-8")
         subprocess.run(["bluetoothctl", "scan", "off"], capture_output=True, timeout=2)
-        
         for line in out.splitlines():
             parts = line.split(" ", 2)
             if len(parts) >= 3:
                 devices.append({"address": parts[1], "name": parts[2]})
-    except Exception as e:
-        print("Ошибка сканирования Bluetooth:", e)
+    except Exception:
+        pass
     return jsonify(devices)
 
 def keep_alive_ping():
@@ -342,4 +309,5 @@ if __name__ == '__main__':
     ping_thread = threading.Thread(target=keep_alive_ping, daemon=True)
     ping_thread.start()
     
+    # Теперь можно спокойно запускать от root без танцев с графикой
     app.run(host='0.0.0.0', port=5000)
