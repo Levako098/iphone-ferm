@@ -606,72 +606,85 @@ def save_template():
 @app.route('/macro')
 def run_macro():
     target = request.args.get('target')
-    global LATEST_FRAME
+    global LATEST_FRAME, hid_instance
     if not LATEST_FRAME:
         return "Нет сигнала с экрана айфона!"
     
+    # 1. "Будим" курсор, чтобы он появился на экране
+    if hid_instance:
+        send_hid_move(5, 5, click=0)
+        time.sleep(0.02)
+        send_hid_move(-5, -5, click=0)
+        time.sleep(0.5) # Ждем полсекунды, чтобы кадр с курсором успел прилететь по GStreamer
+        
+    if not LATEST_FRAME:
+        return "Ошибка: кадр не обновился."
+        
     nparr = np.frombuffer(LATEST_FRAME, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
     try:
-        template = cv2.imread(f"{target}.png")
-        if template is None:
-            return f"Шаблон {target}.png не найден! Сначала выдели его кнопкой выше."
-            
-        result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        # 2. Загружаем шаблоны
+        template_target = cv2.imread(f"{target}.png")
+        template_cursor = cv2.imread("cursor.png")
         
-        match_percent = int(max_val * 100)
+        if template_target is None:
+            return f"Шаблон {target}.png не найден! Выдели его в панели."
+        if template_cursor is None:
+            return "Шаблон cursor.png не найден! Пошевели мышью, выдели серый кружок в панели и назови его 'cursor'."
+            
+        # 3. Ищем цель (TikTok)
+        res_t = cv2.matchTemplate(img, template_target, cv2.TM_CCOEFF_NORMED)
+        _, max_val_t, _, max_loc_t = cv2.minMaxLoc(res_t)
         
-        if max_val > 0.70:
-            h, w, _ = template.shape
-            center_x = max_loc[0] + w // 2
-            center_y = max_loc[1] + h // 2
+        if max_val_t < 0.70:
+            return f"Цель {target} не найдена (совпадение {int(max_val_t*100)}%)."
             
-            # --- МАГИЯ КАЛИБРОВКИ ---
+        target_x = max_loc_t[0] + template_target.shape[1] // 2
+        target_y = max_loc_t[1] + template_target.shape[0] // 2
+        
+        # 4. Ищем курсор
+        res_c = cv2.matchTemplate(img, template_cursor, cv2.TM_CCOEFF_NORMED)
+        _, max_val_c, _, max_loc_c = cv2.minMaxLoc(res_c)
+        
+        # Порог для курсора ниже, так как он полупрозрачный и под ним меняется фон
+        if max_val_c < 0.55: 
+            return "Курсор не найден! Попробуй пересоздать шаблон 'cursor', выделив его плотнее."
             
-            # 1. Жестко упираем мышь в левый верхний угол (с запасом 20 раз, чтобы 100% сбить позицию в 0,0)
-            for _ in range(20):
-                send_hid_move(-127, -127, click=0)
-                time.sleep(0.01)
+        cursor_x = max_loc_c[0] + template_cursor.shape[1] // 2
+        cursor_y = max_loc_c[1] + template_cursor.shape[0] // 2
+        
+        # 5. Считаем ИДЕАЛЬНУЮ разницу между курсором и целью
+        pixel_dx = target_x - cursor_x
+        pixel_dy = target_y - cursor_y
+        
+        # Переводим пиксели в шаги мыши (коэффициент масштабирования)
+        # Если всё ещё чуть недолетает - поставь 0.9 или 1.0
+        SCALE = 0.85 
+        
+        hid_dx = int(pixel_dx * SCALE)
+        hid_dy = int(pixel_dy * SCALE)
+        
+        if hid_instance:
+            # Двигаем плавно, чтобы обойти ускорение iOS
+            steps = 15
+            step_x = hid_dx / steps
+            step_y = hid_dy / steps
             
-            time.sleep(0.1)
+            for _ in range(steps):
+                send_hid_move(step_x, step_y, click=0)
+                time.sleep(0.015)
             
-            # 2. НАСТРОЙКА ЧУВСТВИТЕЛЬНОСТИ (МАСШТАБА)
-            # Если мышь НЕДОЛЕТАЕТ до цели (как на скрине) -> Увеличиваем эти цифры (например, до 1.3)
-            # Если ПЕРЕЛЕТАЕТ цель -> Уменьшаем (например, до 0.9)
-            SCALE_X = 1.15
-            SCALE_Y = 1.15
+            time.sleep(0.1) # Пауза перед кликом
             
-            target_dx = int(center_x * SCALE_X)
-            target_dy = int(center_y * SCALE_Y)
-            
-            # 3. Едем к цели одинаковыми мелкими шажками, чтобы отключить ускорение мыши iOS
-            step_size = 15
-            current_x, current_y = 0, 0
-            
-            while current_x < target_dx or current_y < target_dy:
-                move_x = min(step_size, target_dx - current_x)
-                move_y = min(step_size, target_dy - current_y)
-                
-                send_hid_move(move_x, move_y, click=0)
-                
-                current_x += move_x
-                current_y += move_y
-                time.sleep(0.015) # Микропауза для плавности
-            
-            time.sleep(0.1) # Ждем, пока курсор остановится
-            
-            # 4. Кликаем
+            # Клик
             send_hid_move(0, 0, click=1)
             time.sleep(0.08)
             send_hid_move(0, 0, click=0)
-                
-            return f"Цель найдена! Двигаемся на X:{target_dx} Y:{target_dy} (Оригинал X:{center_x} Y:{center_y})"
-        else:
-            return f"Элемент {target} не найден на экране (совпадение {match_percent}%)."
+            
+        return f"Снайперский выстрел! Курсор был на ({cursor_x},{cursor_y}), цель на ({target_x},{target_y}). Сдвиг: {hid_dx}x{hid_dy}"
     except Exception as e:
-        return f"Ошибка автоматизации: {str(e)}"
+        return f"Ошибка OpenCV: {str(e)}"
 
 @app.route('/move')
 def web_move():
