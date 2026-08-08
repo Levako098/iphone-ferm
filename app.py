@@ -81,7 +81,7 @@ HTML_PAGE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BoSMM Panel</title>
+    <title>BoSMM Panel v2</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -181,7 +181,6 @@ HTML_PAGE = """
         .secondary-btn { background: #1f1f1f; color: var(--text-main); border: 1px solid #333; }
         .secondary-btn:hover { background: #2a2a2a; }
         
-        /* Зона трансляции с возможностью зажатия и свайпов мышей */
         .screen-preview { 
             background: transparent; 
             border: none; 
@@ -198,7 +197,7 @@ HTML_PAGE = """
             object-position: left top; 
             display: block; 
             border-radius: 12px;
-            pointer-events: none; /* Чтобы мышь кликала в контейнер, а не в картинку */
+            pointer-events: none; 
         }
         
         .view { display: none; animation: fadeIn 0.4s ease forwards; }
@@ -207,7 +206,7 @@ HTML_PAGE = """
         
         .d-pad { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 10px; }
         .d-pad-row { display: flex; gap: 10px; justify-content: flex-start; }
-        .d-pad button { width: 64px; height: 64px; padding: 0; border-radius: 16px; background: #1a1a1a; border: 1px solid #333; color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+        .d-pad button { width: 64px; height: 64px; padding: 0; border-radius: 16px; background: #1a1a1a; border: 1px solid #333; color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.15); display: flex; justify-content: center; align-items: center; }
         .d-pad button:hover { background: #262626; border-color: #444; }
         .d-pad button:active { background: #333; transform: scale(0.92); }
         .d-pad .click-btn { width: 80px; background: var(--accent); border: none; font-size: 16px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); }
@@ -219,7 +218,6 @@ HTML_PAGE = """
 <body>
     <h1>BoSMM Panel</h1>
 
-    <!-- ЭКРАН 1: Авто-поиск -->
     <div id="view-devices" class="view active">
         <div class="container">
             <div class="card">
@@ -239,7 +237,6 @@ HTML_PAGE = """
         </div>
     </div>
 
-    <!-- ЭКРАН 2: Управление -->
     <div id="view-control" class="view">
         <div class="container">
             <div class="card">
@@ -249,7 +246,6 @@ HTML_PAGE = """
                         Экран трансляции (Зажми ЛКМ и двигай для свайпа)
                     </span>
                 </h3>
-                <!-- Интерактивная зона тачпада поверх экрана -->
                 <div class="screen-preview" id="touchpad" onmousedown="startDrag(event)" onmousemove="onDrag(event)" onmouseup="endDrag()" onmouseleave="endDrag()">
                     <img id="videoStream" src="" alt="Ожидание трансляции...">
                 </div>
@@ -265,21 +261,21 @@ HTML_PAGE = """
                 <div class="d-pad">
                     <div class="d-pad-row">
                         <button onclick="move(0, -30)">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:24px;height:24px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
                         </button>
                     </div>
                     <div class="d-pad-row">
                         <button onclick="move(-30, 0)">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:24px;height:24px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
                         </button>
                         <button class="click-btn" onclick="clickMouse()">Клик</button>
                         <button onclick="move(30, 0)">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:24px;height:24px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                         </button>
                     </div>
                     <div class="d-pad-row">
                         <button onclick="move(0, 30)">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7 7"></path></svg>
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:24px;height:24px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7 7"></path></svg>
                         </button>
                     </div>
                 </div>
@@ -314,18 +310,15 @@ HTML_PAGE = """
             document.getElementById('videoStream').src = "";
         }
 
-        // Логика тачпада (зажатие ЛКМ и перетаскивание)
         function startDrag(e) {
             isDragging = true;
-            // Делаем клик (зажимаем ЛКМ на айфоне)
             fetch('/move?x=0&y=0&click=1');
         }
 
         function onDrag(e) {
             if (!isDragging) return;
-            // Отправляем относительное движение мыши
-            let dx = e.movementX || e.moX || 0;
-            let dy = e.movementY || e.moY || 0;
+            let dx = e.movementX || 0;
+            let dy = e.movementY || 0;
             if (dx !== 0 || dy !== 0) {
                 fetch(`/move?x=${dx * 1.5}&y=${dy * 1.5}&click=1`);
             }
@@ -334,13 +327,11 @@ HTML_PAGE = """
         function endDrag() {
             if (!isDragging) return;
             isDragging = false;
-            // Отпускаем клик
             fetch('/move?x=0&y=0&click=0');
         }
 
         function scanDevices() {
             document.getElementById('scanStatus').innerText = "Обновление...";
-            
             fetch('/scan').then(res => res.json()).then(data => {
                 const grid = document.getElementById('deviceGrid');
                 document.getElementById('scanStatus').innerText = "Поиск активен";
