@@ -600,6 +600,9 @@ def run_macro():
     nparr = np.frombuffer(LATEST_FRAME, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
+    # Узнаем реальные размеры кадра трансляции
+    frame_h, frame_w, _ = img.shape
+    
     try:
         template = cv2.imread(f"{target}.png")
         if template is None:
@@ -614,21 +617,34 @@ def run_macro():
             center_y = max_loc[1] + h // 2
             
             if hid_instance:
-                steps = 10
-                dx = int((center_x - 160) / steps)
-                dy = int((center_y - 240) / steps)
+                # 1. Сбрасываем курсор в левый верхний угол (убегаем влево-вверх до упора)
+                for _ in range(5):
+                    hid_instance.input_report.changed(bytes([0, -127, -127]))
+                    time.sleep(0.01)
+                
+                # Небольшая пауза на стабилизацию
+                time.sleep(0.05)
+                
+                # 2. Теперь ведем курсор из угла (0,0) точно в точку center_x, center_y
+                # Разобьем путь на шаги, чтобы мышь не телепортировалась, а плавно доехала
+                steps = 15
+                step_x = center_x / steps
+                step_y = center_y / steps
                 
                 for _ in range(steps):
+                    dx = max(-127, min(127, int(step_x)))
+                    dy = max(-127, min(127, int(step_y)))
                     hid_instance.input_report.changed(bytes([0, dx & 0xff, dy & 0xff]))
                     time.sleep(0.01)
                 
-                hid_instance.input_report.changed(bytes([1, 0, 0]))
-                time.sleep(0.05)
-                hid_instance.input_report.changed(bytes([0, 0, 0]))
+                # 3. Кликаем ЛКМ в найденной точке
+                hid_instance.input_report.changed(bytes([1, 0, 0])) # Зажатие
+                time.sleep(0.08)
+                hid_instance.input_report.changed(bytes([0, 0, 0])) # Отпускание
                 
-            return f"Цель {target} найдена (точность {int(max_val*100)}%)! Клик отправлен на телефон."
+            return f"Цель {target} найдена ({int(max_val*100)}%). Курсор откалиброван и совершен клик в X:{center_x} Y:{center_y}!"
         else:
-            return f"Элемент {target} не найден на экране (совпадение {int(max_val*100)}%)."
+            return f"Элемент {target} не найден на экране (совпадение {int(max_val*100}%)."
     except Exception as e:
         return f"Ошибка OpenCV/Клика: {str(e)}"
 
