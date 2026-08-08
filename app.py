@@ -4,6 +4,7 @@ import subprocess
 import time
 import io
 import socket
+import os
 import numpy as np
 import cv2
 from flask import Flask, render_template_string, request, jsonify, Response, make_response
@@ -83,7 +84,7 @@ HTML_PAGE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BoSMM Panel v2</title>
+    <title>BoSMM Panel v3</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -97,6 +98,8 @@ HTML_PAGE = """
             --border: #262626;
             --success: #16a34a;
             --success-hover: #22c55e;
+            --purple: #8b5cf6;
+            --purple-hover: #7c3aed;
         }
         body { 
             font-family: 'Inter', sans-serif; 
@@ -182,6 +185,8 @@ HTML_PAGE = """
         .click-btn:hover { background: var(--success-hover); }
         .secondary-btn { background: #1f1f1f; color: var(--text-main); border: 1px solid #333; }
         .secondary-btn:hover { background: #2a2a2a; }
+        .macro-btn { background: var(--purple); }
+        .macro-btn:hover { background: var(--purple-hover); }
         
         .screen-preview { 
             background: transparent; 
@@ -199,7 +204,16 @@ HTML_PAGE = """
             object-position: left top; 
             display: block; 
             border-radius: 12px;
-            pointer-events: none; 
+        }
+        
+        /* Холст для выделения рамкой */
+        #cropCanvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            display: none;
+            cursor: crosshair;
+            border-radius: 12px;
         }
         
         .view { display: none; animation: fadeIn 0.4s ease forwards; }
@@ -248,8 +262,9 @@ HTML_PAGE = """
                         Экран трансляции (Зажми ЛКМ и двигай для свайпа)
                     </span>
                 </h3>
-                <div class="screen-preview" id="touchpad" onmousedown="startDrag(event)" onmousemove="onDrag(event)" onmouseup="endDrag()" onmouseleave="endDrag()">
+                <div class="screen-preview" id="previewContainer">
                     <img id="videoStream" src="" alt="Ожидание трансляции...">
+                    <canvas id="cropCanvas"></canvas>
                 </div>
             </div>
 
@@ -260,7 +275,8 @@ HTML_PAGE = """
                         Автоматизация (OpenCV)
                     </span>
                 </h3>
-                <button onclick="triggerMacro('tiktok')" style="background: #8b5cf6;">Найти и нажать TikTok</button>
+                <button class="macro-btn" onclick="toggleCropMode()" id="cropBtn">🎯 Выделить элемент с экрана</button>
+                <button class="macro-btn" onclick="triggerMacro('tiktok')" style="background: #059669;">🚀 Найти и нажать TikTok</button>
                 <br><br>
                 <h3>
                     <span>Точечное управление</span>
@@ -299,10 +315,13 @@ HTML_PAGE = """
         let scanInterval;
         let previewIntervals = [];
         let isDragging = false;
+        let cropMode = false;
+        let startX, startY, endX, endY;
 
         window.onload = () => {
             scanDevices();
             scanInterval = setInterval(scanDevices, 10000);
+            initCropper();
         };
 
         function showControlView() {
@@ -315,6 +334,89 @@ HTML_PAGE = """
             document.getElementById('view-control').classList.remove('active');
             document.getElementById('view-devices').classList.add('active');
             document.getElementById('videoStream').src = "";
+        }
+
+        // Логика выделения рамкой прямо на картинке стрима
+        function initCropper() {
+            const canvas = document.getElementById('cropCanvas');
+            const ctx = canvas.getContext('2d');
+            const img = document.getElementById('videoStream');
+            let drawing = false;
+
+            document.getElementById('previewContainer').onmousedown = function(e) {
+                if (!cropMode) {
+                    startDrag(e);
+                    return;
+                }
+                drawing = true;
+                const rect = canvas.getBoundingClientRect();
+                startX = e.clientX - rect.left;
+                startY = e.clientY - rect.top;
+            };
+
+            document.getElementById('previewContainer').onmousemove = function(e) {
+                if (!cropMode) {
+                    onDrag(e);
+                    return;
+                }
+                if (!drawing) return;
+                const rect = canvas.getBoundingClientRect();
+                endX = e.clientX - rect.left;
+                endY = e.clientY - rect.top;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = '#2563eb';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+            };
+
+            document.getElementById('previewContainer').onmouseup = function(e) {
+                if (!cropMode) {
+                    endDrag();
+                    return;
+                }
+                if (!drawing) return;
+                drawing = false;
+                cropMode = false;
+                document.getElementById('cropBtn').style.background = 'var(--purple)';
+                document.getElementById('cropBtn').innerText = '🎯 Выделить элемент с экрана';
+                canvas.style.display = 'none';
+
+                let name = prompt("Введите имя для этого шаблона (например: tiktok):", "tiktok");
+                if (!name) return;
+
+                // Передаем координаты и размеры оригинального изображения в процентах/пикселях на сервер
+                const scaleX = img.naturalWidth / img.clientWidth;
+                const scaleY = img.naturalHeight / img.clientHeight;
+
+                let x = Math.min(startX, endX) * scaleX;
+                let y = Math.min(startY, endY) * scaleY;
+                let w = Math.abs(endX - startX) * scaleX;
+                let h = Math.abs(endY - startY) * scaleY;
+
+                fetch(`/save_template?name=${name}&x=${x}&y=${y}&w=${w}&h=${h}`)
+                    .then(res => res.text())
+                    .then(msg => alert(msg));
+            };
+        }
+
+        function toggleCropMode() {
+            cropMode = !cropMode;
+            const btn = document.getElementById('cropBtn');
+            const canvas = document.getElementById('cropCanvas');
+            const img = document.getElementById('videoStream');
+
+            if (cropMode) {
+                btn.style.background = '#ef4444';
+                btn.innerText = '❌ Отменить выделение';
+                canvas.width = img.clientWidth;
+                canvas.height = img.clientHeight;
+                canvas.style.display = 'block';
+            } else {
+                btn.style.background = 'var(--purple)';
+                btn.innerText = '🎯 Выделить элемент с экрана';
+                canvas.style.display = 'none';
+            }
         }
 
         function startDrag(e) {
@@ -465,37 +567,54 @@ def video_feed():
             time.sleep(0.05)
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/save_template')
+def save_template():
+    global LATEST_FRAME
+    name = request.args.get('name')
+    x = int(float(request.args.get('x', 0)))
+    y = int(float(request.args.get('y', 0)))
+    w = int(float(request.args.get('w', 0)))
+    h = int(float(request.args.get('h', 0)))
+
+    if not LATEST_FRAME or w <= 0 or h <= 0:
+        return "Ошибка: неверные координаты или нет сигнала экрана!"
+
+    nparr = np.frombuffer(LATEST_FRAME, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    # Вырезаем область по координатам рамки
+    crop_img = img[y:y+h, x:x+w]
+    if crop_img.size == 0:
+        return "Ошибка обрезки изображения!"
+
+    cv2.imwrite(f"{name}.png", crop_img)
+    return f"Шаблон '{name}.png' успешно сохранен!"
+
 @app.route('/macro')
 def run_macro():
     target = request.args.get('target')
-    global LATEST_FRAME, hid_instance
+    global LATEST_FRAME
     if not LATEST_FRAME:
         return "Нет сигнала с экрана айфона!"
     
-    # Конвертируем текущий JPEG-кадр в OpenCV формат
     nparr = np.frombuffer(LATEST_FRAME, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
-    # Пример логики поиска шаблона (нужно положить файл шаблона например 'tiktok.png' в папку со скриптом)
     try:
         template = cv2.imread(f"{target}.png")
         if template is None:
-            return f"Ошибка: не найден файл шаблона {target}.png в папке со скриптом!"
+            return f"Шаблон {target}.png не найден! Сначала выдели его кнопкой выше."
             
         result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         
-        # Если совпадение больше 80%
-        if max_val > 0.8:
+        if max_val > 0.75:
             h, w, _ = template.shape
             center_x = max_loc[0] + w // 2
             center_y = max_loc[1] + h // 2
-            
-            # Так как мы управляем через относительный HID, симулируем движение к центру (упрощенно)
-            # В реале здесь высчитывается дельта относительно текущего положения воображаемого курсора
-            return f"Цель {target} найдена с точностью {int(max_val*100)}% в точке X:{center_x} Y:{center_y}!"
+            return f"Цель {target} найдена (точность {int(max_val*100)}%) в координатах X:{center_x} Y:{center_y}!"
         else:
-            return f"Элемент {target} не найден на экране (совпадение всего {int(max_val*100)}%)."
+            return f"Элемент {target} не найден на экране (совпадение {int(max_val*100)}%)."
     except Exception as e:
         return f"Ошибка OpenCV: {str(e)}"
 
