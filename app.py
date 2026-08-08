@@ -643,20 +643,27 @@ def run_macro():
             return f"Элемент {target} не найден (совпадение {match_percent} пункта)."
     except Exception as e:
         return f"Ошибка: {str(e)}"
-
+        
 @app.route('/move')
 def web_move():
     global hid_instance
     if hid_instance:
-        x = int(float(request.args.get('x', 0)))
-        y = int(float(request.args.get('y', 0)))
-        btn = int(request.args.get('click', 0))
-        x_byte = x & 0xff
-        y_byte = y & 0xff
         try:
+            x = int(float(request.args.get('x', 0)))
+            y = int(float(request.args.get('y', 0)))
+            btn = int(request.args.get('click', 0))
+            
+            # Жестко ограничиваем смещение в диапазоне от -127 до 127 для относительных отчетов мыши
+            x = max(-127, min(127, x))
+            y = max(-127, min(127, y))
+            
+            # Превращаем в байты без риска вылета за диапазон 0-255
+            x_byte = x & 0xff
+            y_byte = y & 0xff
+            
             hid_instance.input_report.changed(bytes([btn, x_byte, y_byte]))
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Ошибка перемещения: {e}")
     return "OK"
 
 @app.route('/scan')
