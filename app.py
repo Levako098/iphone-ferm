@@ -3,6 +3,7 @@ import threading
 import subprocess
 import time
 import io
+from Xlib import X, display
 from flask import Flask, render_template_string, request, jsonify, Response
 from bluez_peripheral.gatt.service import Service
 from bluez_peripheral.gatt.characteristic import characteristic, CharacteristicFlags as CharFlags
@@ -173,12 +174,10 @@ HTML_PAGE = """
             showControlView();
         }
 
-        // Функция отправки координат
         function move(x, y) {
             fetch(`/move?x=${x}&y=${y}`);
         }
 
-        // Костыль для клика (отправляем 1, ждем 100мс, отправляем 0)
         function clickMouse() {
             fetch('/move?x=0&y=0&click=1').then(() => {
                 setTimeout(() => fetch('/move?x=0&y=0&click=0'), 100);
@@ -189,29 +188,63 @@ HTML_PAGE = """
 </html>
 """
 
+def find_window_geometry(name_containing="UxPlay"):
+    """Находит координаты и размер окна X11 по части имени"""
+    try:
+        d = display.Display()
+        root = d.screen().root
+        
+        window_ids = root.get_full_property(d.intern_atom('_NET_CLIENT_LIST'), X.AnyPropertyType).value
+        
+        for win_id in window_ids:
+            win = d.create_resource_object('window', win_id)
+            wm_name = win.get_wm_name()
+            if wm_name and name_containing.lower() in wm_name.lower():
+                geometry = win.get_geometry()
+                trans = root.translate_coords(win, 0, 0)
+                
+                return {
+                    'left': trans.x_dst,
+                    'top': trans.y_dst,
+                    'width': geometry.width,
+                    'height': geometry.height
+                }
+    except Exception:
+        pass
+    return None
+
 def generate_frames():
-    """Генератор MJPEG-видеопотока с захватом экрана виртуальной машины"""
+    """Генератор MJPEG-видеопотока с захватом ОКНА UXPLAY, а не всей ВМки"""
     with mss.mss() as sct:
-        # Индекс 1 берет основной монитор. В виртуалке обычно он один.
-        monitor = sct.monitors[1] 
         while True:
-            # Делаем снимок
-            sct_img = sct.grab(monitor)
-            # Переводим в RGB формат для Pillow
-            img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+            monitor_bbox = find_window_geometry("UxPlay")
             
-            # Ужимаем разрешение и качество, чтобы стрим в браузере не лагал
-            img_io = io.BytesIO()
-            img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-            img.save(img_io, format='JPEG', quality=45)
-            frame = img_io.getvalue()
-            
-            # Формируем кусок MJPEG
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-            
-            # Ограничиваем FPS (~15 кадров в секунду), чтобы не перегружать виртуалку
-            time.sleep(0.06)
+            if monitor_bbox is not None:
+                try:
+                    sct_img = sct.grab(monitor_bbox)
+                    img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+                    
+                    img_io = io.BytesIO()
+                    img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                    img.save(img_io, format='JPEG', quality=45)
+                    frame = img_io.getvalue()
+                    
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                    
+                    time.sleep(0.05)
+                except Exception:
+                    time.sleep(0.2)
+                    pass
+            else:
+                img = Image.new('RGB', (640, 480), color=(0, 0, 0))
+                img_io = io.BytesIO()
+                img.save(img_io, format='JPEG', quality=20)
+                frame = img_io.getvalue()
+                
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                time.sleep(1.0)
 
 @app.route('/')
 def index():
@@ -219,19 +252,16 @@ def index():
 
 @app.route('/video_feed')
 def video_feed():
-    # Отдаем видеопоток браузеру
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/move')
 def web_move():
     global hid_instance
     if hid_instance:
-        # Получаем данные из веб-запроса
         x = int(request.args.get('x', 0))
         y = int(request.args.get('y', 0))
         btn = int(request.args.get('click', 0))
         
-        # Конвертируем в 8-битные беззнаковые байты (для отрицательных чисел)
         x_byte = x & 0xff
         y_byte = y & 0xff
         
@@ -258,6 +288,17 @@ def scan():
         print("Ошибка сканирования Bluetooth:", e)
     return jsonify(devices)
 
+def keep_alive_ping():
+    """Фоновый пинг, чтобы iOS не отключала мышь из-за неактивности"""
+    while True:
+        time.sleep(10)
+        global hid_instance
+        if hid_instance:
+            try:
+                hid_instance.input_report.changed(bytes([0, 0, 0]))
+            except Exception:
+                pass
+
 def run_ble_loop():
     async def ble_main():
         bus = await get_message_bus()
@@ -273,7 +314,8 @@ def run_ble_loop():
         agent = NoIoAgent()
         await agent.register(bus)
         
-        adv = FixedAdvertisement("ArchMouse", ["1812"], 0x03C2, 100)
+        # 0 означает бесконечное вещание
+        adv = FixedAdvertisement("ArchMouse", ["1812"], 0x03C2, 0)
         await adv.register(bus)
         print("\n[+] BLE Сервер 'ArchMouse' успешно запущен!")
         print("[+] Перейди в браузер по IP-адресу виртуалки на порт 5000\n")
@@ -286,6 +328,10 @@ if __name__ == '__main__':
     # Запускаем Bluetooth-асинхронщину в отдельном потоке
     ble_thread = threading.Thread(target=run_ble_loop, daemon=True)
     ble_thread.start()
+    
+    # Запускаем пинг-сердцебиение от отключений
+    ping_thread = threading.Thread(target=keep_alive_ping, daemon=True)
+    ping_thread.start()
     
     # Запускаем Flask-сервер на всех интерфейсах локальной сети
     app.run(host='0.0.0.0', port=5000)
