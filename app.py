@@ -18,7 +18,6 @@ from PIL import Image
 app = Flask(__name__)
 hid_instance = None
 
-# Глобальная переменная для хранения последнего готового кадра из GStreamer
 LATEST_FRAME = None
 
 MOUSE_REPORT_MAP = bytes([
@@ -108,10 +107,12 @@ HTML_PAGE = """
         }
         .container {
             display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
+            flex-direction: column; /* Все строго по центру друг под другом */
+            align-items: center;
             gap: 20px;
             padding: 0 15px;
+            width: 100%;
+            box-sizing: border-box;
         }
         .card { 
             background: var(--bg-card); 
@@ -119,12 +120,11 @@ HTML_PAGE = """
             border-radius: 24px; 
             box-shadow: 0 10px 40px rgba(0,0,0,0.4); 
             width: 100%; 
-            max-width: 400px; 
+            max-width: 450px; /* Немного расширил карточку */
             text-align: left;
             border: 1px solid var(--border);
             box-sizing: border-box;
         }
-        .full-width { max-width: 800px; width: 100%; }
         
         h1 { color: #fff; font-size: 26px; font-weight: 700; margin-top: 0; margin-bottom: 30px; }
         h3 { font-size: 18px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-top: 0; margin-bottom: 16px; color: #f5f5f5; display: flex; justify-content: space-between; align-items: center; }
@@ -138,7 +138,7 @@ HTML_PAGE = """
             grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 15px;
             margin-top: 20px;
-            align-content: start;
+            width: 100%;
         }
         
         .device-card {
@@ -152,7 +152,6 @@ HTML_PAGE = """
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            min-height: 100px;
         }
         .device-card:hover {
             border-color: var(--accent);
@@ -160,16 +159,16 @@ HTML_PAGE = """
             box-shadow: 0 8px 20px rgba(37, 99, 235, 0.15);
         }
         
-        .device-name { font-weight: 600; color: #fff; font-size: 15px; word-break: break-word; }
-        .device-mac { font-size: 11px; color: var(--text-muted); margin-top: 6px; font-family: monospace; }
+        .device-name { font-weight: 600; color: #fff; font-size: 15px; word-break: break-word; text-align: center; }
+        .device-mac { font-size: 11px; color: var(--text-muted); margin-top: 6px; font-family: monospace; text-align: center; }
         
         .device-preview {
             width: 100%;
-            height: 120px;
-            object-fit: cover;
+            height: 200px; /* Увеличена высота для вертикального экрана */
+            object-fit: contain; /* Теперь экран айфона не обрезается */
             border-radius: 10px;
             margin-top: 12px;
-            background: #000;
+            background: #0a0a0a;
             border: 1px solid #333;
         }
 
@@ -187,11 +186,25 @@ HTML_PAGE = """
         .secondary-btn { background: #1f1f1f; color: var(--text-main); border: 1px solid #333; }
         .secondary-btn:hover { background: #2a2a2a; }
         
-        .screen-preview { width: 100%; height: auto; background: #000; border-radius: 14px; margin-bottom: 20px; border: 1px solid var(--border); overflow: hidden; min-height: 220px; display: flex; justify-content: center; }
-        .screen-preview img { width: 100%; display: block; object-fit: contain; }
+        .screen-preview { 
+            width: 100%; 
+            background: #0a0a0a; 
+            border-radius: 14px; 
+            margin-bottom: 20px; 
+            border: 1px solid var(--border); 
+            overflow: hidden; 
+            display: flex; 
+            justify-content: center; 
+        }
+        .screen-preview img { 
+            width: 100%; 
+            max-height: 55vh; /* Ограничиваем высоту, чтобы джойстик влезал на экран мобилки */
+            object-fit: contain; /* Картинка полностью вписывается без обрезки */
+            display: block; 
+        }
         
-        .view { display: none; animation: fadeIn 0.4s ease forwards; }
-        .active { display: block; }
+        .view { display: none; animation: fadeIn 0.4s ease forwards; width: 100%; }
+        .active { display: flex; flex-direction: column; align-items: center; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
         .d-pad { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 10px; }
@@ -201,31 +214,31 @@ HTML_PAGE = """
         .d-pad button:active { background: #333; transform: scale(0.92); }
         .d-pad .click-btn { width: 80px; background: var(--accent); border: none; font-size: 16px; }
         .d-pad .click-btn:hover { background: var(--accent-hover); }
-        
-        svg { width: 22px; height: 22px; }
     </style>
 </head>
 <body>
     <h1>ArchMouse Control</h1>
 
     <!-- ЭКРАН 1: Авто-поиск -->
-    <div class="container" id="view-devices">
-        <div class="card full-width active">
-            <h3>
-                🔗 Доступные устройства 
-                <span class="loader" id="scanStatus">Идет поиск...</span>
-            </h3>
-            <div class="device-grid" id="deviceGrid">
-                <!-- Сюда JS будет добавлять карточки -->
+    <div id="view-devices" class="view active">
+        <div class="container">
+            <div class="card" style="max-width: 600px;">
+                <h3>
+                    🔗 Доступные устройства 
+                    <span class="loader" id="scanStatus">Идет поиск...</span>
+                </h3>
+                <div class="device-grid" id="deviceGrid">
+                    <!-- Сюда JS будет добавлять карточки -->
+                </div>
+                <button class="secondary-btn" onclick="showControlView()" style="margin-top: 30px;">Я уже подключил мышь ➡️</button>
             </div>
-            <button class="secondary-btn" onclick="showControlView()" style="max-width: 300px; margin: 30px auto 0 auto;">Я уже подключил мышь ➡️</button>
         </div>
     </div>
 
     <!-- ЭКРАН 2: Управление -->
     <div id="view-control" class="view">
         <div class="container">
-            <div class="card" style="max-width: 320px;">
+            <div class="card">
                 <h3>📱 Экран iPhone</h3>
                 <div class="screen-preview">
                     <img id="videoStream" src="" alt="Ожидание трансляции...">
@@ -244,7 +257,7 @@ HTML_PAGE = """
                     <div class="d-pad-row"><button onclick="move(0, 30)">⬇️</button></div>
                 </div>
                 <br>
-                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 10px;">⬅️ Отключиться</button>
+                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 10px;">⬅️ Назад в меню</button>
             </div>
         </div>
     </div>
@@ -253,22 +266,20 @@ HTML_PAGE = """
         let scanInterval;
         let previewIntervals = [];
 
-        // Запускаем поиск при загрузке страницы
         window.onload = () => {
             scanDevices();
-            // Зацикливаем поиск каждые 10 секунд
             scanInterval = setInterval(scanDevices, 10000);
         };
 
         function showControlView() {
-            document.getElementById('view-devices').style.display = 'none';
+            document.getElementById('view-devices').classList.remove('active');
             document.getElementById('view-control').classList.add('active');
             document.getElementById('videoStream').src = "/video_feed?t=" + new Date().getTime();
         }
 
         function showDeviceView() {
             document.getElementById('view-control').classList.remove('active');
-            document.getElementById('view-devices').style.display = 'flex';
+            document.getElementById('view-devices').classList.add('active');
             document.getElementById('videoStream').src = "";
         }
 
@@ -279,7 +290,6 @@ HTML_PAGE = """
                 const grid = document.getElementById('deviceGrid');
                 document.getElementById('scanStatus').innerText = "Поиск активен";
                 
-                // Очищаем старые интервалы превьюшек
                 previewIntervals.forEach(clearInterval);
                 previewIntervals = [];
 
@@ -313,7 +323,6 @@ HTML_PAGE = """
                     `;
                     grid.appendChild(card);
 
-                    // Если это iOS, вешаем таймер обновления превьюшки каждые 5 сек
                     if (isIOS) {
                         const interval = setInterval(() => {
                             const img = document.getElementById(imgId);
@@ -340,7 +349,6 @@ HTML_PAGE = """
 """
 
 def gstreamer_receiver():
-    """Фоновый поток: постоянно читает сокет и обновляет LATEST_FRAME"""
     global LATEST_FRAME
     while True:
         try:
@@ -363,7 +371,6 @@ def gstreamer_receiver():
                     
                     if start != -1 and end != -1:
                         if end > start:
-                            # Сохраняем последний кадр в глобальную переменную
                             LATEST_FRAME = buffer[start:end+2]
                             buffer = buffer[end+2:]
                         else:
@@ -371,11 +378,9 @@ def gstreamer_receiver():
                     else:
                         break 
         except Exception:
-            # Если uxplay закрыт, ждем секунду и пробуем снова
             time.sleep(1)
 
 def get_fallback_image():
-    """Отдает черную заглушку, если видеопотока нет"""
     img = Image.new('RGB', (320, 240), color=(15, 15, 15))
     img_io = io.BytesIO()
     img.save(img_io, format='JPEG', quality=20)
@@ -387,13 +392,11 @@ def index():
 
 @app.route('/snapshot')
 def snapshot():
-    """Эндпоинт для 5-секундных превьюшек на экране подключения"""
     frame = LATEST_FRAME if LATEST_FRAME else get_fallback_image()
     return Response(frame, mimetype='image/jpeg')
 
 @app.route('/video_feed')
 def video_feed():
-    """Генератор живого видеопотока для экрана управления"""
     def generate():
         while True:
             frame = LATEST_FRAME if LATEST_FRAME else get_fallback_image()
@@ -424,7 +427,6 @@ def scan():
         subprocess.run(["bluetoothctl", "power", "on"], capture_output=True, timeout=2)
         subprocess.run(["bluetoothctl", "scan", "on"], capture_output=True, timeout=2)
         out = subprocess.check_output(["bluetoothctl", "devices"], timeout=2).decode("utf-8")
-        # Не отключаем скан жестко, просто читаем кэш эфира, чтобы не тормозить систему
         for line in out.splitlines():
             parts = line.split(" ", 2)
             if len(parts) >= 3:
@@ -468,7 +470,6 @@ def run_ble_loop():
     asyncio.run(ble_main())
 
 if __name__ == '__main__':
-    # Запускаем фоновый сбор кадров из Gstreamer
     video_thread = threading.Thread(target=gstreamer_receiver, daemon=True)
     video_thread.start()
 
