@@ -189,14 +189,18 @@ HTML_PAGE = """
 """
 
 def find_window_geometry(name_containing="UxPlay"):
-    """Находит координаты и размер окна X11 по части имени"""
+    """Находит координаты и размер окна X11 по части имени с отладкой"""
     try:
         d = display.Display()
         root = d.screen().root
         
-        window_ids = root.get_full_property(d.intern_atom('_NET_CLIENT_LIST'), X.AnyPropertyType).value
+        net_client_list = d.intern_atom('_NET_CLIENT_LIST')
+        window_ids = root.get_full_property(net_client_list, X.AnyPropertyType)
         
-        for win_id in window_ids:
+        if window_ids is None:
+            return None
+            
+        for win_id in window_ids.value:
             win = d.create_resource_object('window', win_id)
             wm_name = win.get_wm_name()
             if wm_name and name_containing.lower() in wm_name.lower():
@@ -209,12 +213,12 @@ def find_window_geometry(name_containing="UxPlay"):
                     'width': geometry.width,
                     'height': geometry.height
                 }
-    except Exception:
-        pass
+    except Exception as e:
+        print("Ошибка Xlib при поиске окна:", e)
     return None
 
 def generate_frames():
-    """Генератор MJPEG-видеопотока с захватом ОКНА UXPLAY, а не всей ВМки"""
+    """Генератор MJPEG-видеопотока с захватом ОКНА UXPLAY"""
     with mss.mss() as sct:
         while True:
             monitor_bbox = find_window_geometry("UxPlay")
@@ -314,7 +318,6 @@ def run_ble_loop():
         agent = NoIoAgent()
         await agent.register(bus)
         
-        # 0 означает бесконечное вещание
         adv = FixedAdvertisement("ArchMouse", ["1812"], 0x03C2, 0)
         await adv.register(bus)
         print("\n[+] BLE Сервер 'ArchMouse' успешно запущен!")
@@ -325,13 +328,10 @@ def run_ble_loop():
     asyncio.run(ble_main())
 
 if __name__ == '__main__':
-    # Запускаем Bluetooth-асинхронщину в отдельном потоке
     ble_thread = threading.Thread(target=run_ble_loop, daemon=True)
     ble_thread.start()
     
-    # Запускаем пинг-сердцебиение от отключений
     ping_thread = threading.Thread(target=keep_alive_ping, daemon=True)
     ping_thread.start()
     
-    # Запускаем Flask-сервер на всех интерфейсах локальной сети
     app.run(host='0.0.0.0', port=5000)
