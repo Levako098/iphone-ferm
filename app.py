@@ -81,7 +81,7 @@ HTML_PAGE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ArchMouse Web Control</title>
+    <title>BoSMM Panel</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -98,83 +98,82 @@ HTML_PAGE = """
         }
         body { 
             font-family: 'Inter', sans-serif; 
-            text-align: center; 
+            text-align: left; /* Прижали всё влево */
             background: var(--bg-main); 
             color: var(--text-main); 
             margin: 0;
-            padding: 30px 0;
+            padding: 30px; /* Отступы от краев экрана */
         }
         .container {
             display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: flex-start; /* Элементы по левому краю */
             gap: 20px;
-            padding: 0 15px;
             width: 100%;
             box-sizing: border-box;
         }
         .card { 
             background: var(--bg-card); 
             padding: 24px; 
-            border-radius: 24px; 
+            border-radius: 16px; 
             box-shadow: 0 10px 40px rgba(0,0,0,0.4); 
             width: 100%; 
-            max-width: 450px; 
+            max-width: 600px; 
             text-align: left;
             border: 1px solid var(--border);
             box-sizing: border-box;
         }
         
-        h1 { color: #fff; font-size: 26px; font-weight: 700; margin-top: 0; margin-bottom: 30px; }
+        h1 { color: #fff; font-size: 26px; font-weight: 700; margin-top: 0; margin-bottom: 30px; text-align: left; }
         h3 { font-size: 18px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-top: 0; margin-bottom: 16px; color: #f5f5f5; display: flex; justify-content: space-between; align-items: center; }
         
         .loader { font-size: 12px; color: var(--accent); font-weight: normal; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
 
         .device-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
+            display: flex;
+            flex-direction: column; /* Список вниз, а не сетка */
+            gap: 20px;
             margin-top: 20px;
             width: 100%;
         }
         
         .device-card {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 16px;
-            padding: 16px;
+            background: transparent; /* Убрали серый фон */
+            border: none; /* Убрали рамку */
+            padding: 0;
             cursor: pointer;
             transition: all 0.2s ease;
             position: relative;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
+            align-items: flex-start; /* Всё внутри карточки влево */
         }
         .device-card:hover {
-            border-color: var(--accent);
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.15);
+            transform: translateX(5px); /* Анимация сдвига при наведении */
         }
         
-        .device-name { font-weight: 600; color: #fff; font-size: 15px; word-break: break-word; text-align: center; }
-        .device-mac { font-size: 11px; color: var(--text-muted); margin-top: 6px; font-family: monospace; text-align: center; }
+        .device-name { font-weight: 600; color: #fff; font-size: 16px; word-break: break-word; text-align: left; }
+        .device-mac { font-size: 12px; color: var(--text-muted); margin-top: 4px; font-family: monospace; text-align: left; }
         
         .device-preview {
             width: 100%;
-            height: 300px; 
+            max-width: 300px; /* Ограничиваем ширину превью, чтобы не было огромным */
+            height: auto;
+            max-height: 400px; 
             object-fit: contain; 
-            border-radius: 10px;
-            margin-top: 16px;
+            object-position: left top; /* Прижимаем картинку в левый верхний угол! */
+            border-radius: 8px;
+            margin-top: 10px;
             background: transparent; 
             border: none;
         }
 
         button { 
             font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
-            padding: 14px; margin: 6px 0; cursor: pointer; 
-            background: var(--accent); color: #fff; border: none; border-radius: 14px; 
-            transition: 0.2s; width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px;
+            padding: 12px 18px; margin: 6px 0; cursor: pointer; 
+            background: var(--accent); color: #fff; border: none; border-radius: 10px; 
+            transition: 0.2s; display: inline-flex; justify-content: center; align-items: center; gap: 8px;
         }
         button:hover { background: var(--accent-hover); transform: translateY(-2px); }
         button:active { transform: translateY(0); }
@@ -189,49 +188,50 @@ HTML_PAGE = """
             background: transparent; 
             border: none; 
             display: flex; 
-            justify-content: center; 
+            justify-content: flex-start; /* Выравнивание основного видео влево */
         }
         .screen-preview img { 
             width: 100%; 
             height: 60vh; 
             object-fit: contain; 
+            object-position: left top; /* Видео прижато в левый верхний угол */
             display: block; 
             border-radius: 12px;
         }
         
         .view { display: none; animation: fadeIn 0.4s ease forwards; width: 100%; }
-        .active { display: flex; flex-direction: column; align-items: center; }
+        .active { display: flex; flex-direction: column; align-items: flex-start; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        .d-pad { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 10px; }
-        .d-pad-row { display: flex; gap: 10px; justify-content: center; }
-        .d-pad button { width: 64px; height: 64px; padding: 0; border-radius: 18px; background: #1a1a1a; border: 1px solid #333; color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+        .d-pad { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 10px; }
+        .d-pad-row { display: flex; gap: 10px; justify-content: flex-start; }
+        .d-pad button { width: 64px; height: 64px; padding: 0; border-radius: 16px; background: #1a1a1a; border: 1px solid #333; color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
         .d-pad button:hover { background: #262626; border-color: #444; }
         .d-pad button:active { background: #333; transform: scale(0.92); }
         .d-pad .click-btn { width: 80px; background: var(--accent); border: none; font-size: 16px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); }
         .d-pad .click-btn:hover { background: var(--accent-hover); }
         
-        svg { width: 24px; height: 24px; }
+        svg { width: 20px; height: 20px; }
     </style>
 </head>
 <body>
-    <h1>ArchMouse Control</h1>
+    <h1>BoSMM Panel</h1>
 
     <!-- ЭКРАН 1: Авто-поиск -->
     <div id="view-devices" class="view active">
         <div class="container">
-            <div class="card" style="max-width: 600px;">
+            <div class="card">
                 <h3>
                     <span>
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
                         Доступные устройства
                     </span>
                     <span class="loader" id="scanStatus">Идет поиск...</span>
                 </h3>
                 <div class="device-grid" id="deviceGrid"></div>
-                <button class="secondary-btn" onclick="showControlView()" style="margin-top: 30px;">
-                    Я уже подключил
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                <button class="secondary-btn" onclick="showControlView()" style="margin-top: 20px;">
+                    Я уже подключился
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                 </button>
             </div>
         </div>
@@ -240,10 +240,10 @@ HTML_PAGE = """
     <!-- ЭКРАН 2: Управление -->
     <div id="view-control" class="view">
         <div class="container">
-            <div class="card">
+            <div class="card" style="max-width: 800px;">
                 <h3>
                     <span>
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                         Экран трансляции
                     </span>
                 </h3>
@@ -255,7 +255,7 @@ HTML_PAGE = """
             <div class="card">
                 <h3>
                     <span>
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
                         Управление курсором
                     </span>
                 </h3>
@@ -281,8 +281,8 @@ HTML_PAGE = """
                     </div>
                 </div>
                 <br>
-                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 10px;">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 15px;">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                     Назад в меню
                 </button>
             </div>
@@ -321,7 +321,7 @@ HTML_PAGE = """
                 previewIntervals = [];
 
                 if(data.length === 0) {
-                    grid.innerHTML = "<p style='color: #ef4444; width: 100%; text-align: center; grid-column: 1/-1;'>Эфир чист. Ищу устройства...</p>";
+                    grid.innerHTML = "<p style='color: #ef4444; margin: 0;'>Эфир чист. Ищу устройства...</p>";
                     return;
                 }
                 
@@ -408,7 +408,7 @@ def gstreamer_receiver():
             time.sleep(1)
 
 def get_fallback_image():
-    # Прозрачная заглушка (цвета карточки)
+    # Прозрачная заглушка под цвет карточки
     img = Image.new('RGB', (320, 240), color=(21, 21, 21))
     img_io = io.BytesIO()
     img.save(img_io, format='JPEG', quality=20)
@@ -416,7 +416,6 @@ def get_fallback_image():
 
 @app.route('/')
 def index():
-    # Жесткий запрет браузеру кэшировать HTML-страницу!
     response = make_response(render_template_string(HTML_PAGE))
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -493,9 +492,9 @@ def run_ble_loop():
         agent = NoIoAgent()
         await agent.register(bus)
         
-        adv = FixedAdvertisement("ArchMouse", ["1812"], 0x03C2, 0)
+        adv = FixedAdvertisement("BoSMM Panel", ["1812"], 0x03C2, 0)
         await adv.register(bus)
-        print("\n[+] BLE Сервер 'ArchMouse' успешно запущен!")
+        print("\n[+] BLE Сервер 'BoSMM Panel' успешно запущен!")
         print("[+] Перейди в браузер по IP-адресу виртуалки на порт 5000\n")
         
         await asyncio.Event().wait()
