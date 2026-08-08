@@ -119,7 +119,8 @@ HTML_PAGE = """
         <div class="card">
             <h3>📱 Экран iPhone (через сервер)</h3>
             <div class="screen-preview">
-                <img src="/video_feed" alt="Загрузка видеопотока...">
+                <!-- Оставили src пустым, JS его заполнит -->
+                <img id="videoStream" src="" alt="Загрузка видеопотока...">
             </div>
         </div>
 
@@ -143,11 +144,17 @@ HTML_PAGE = """
         function showControlView() {
             document.getElementById('view-devices').classList.remove('active');
             document.getElementById('view-control').classList.add('active');
+            
+            // Заставляем браузер загрузить поток заново, игнорируя кэш
+            document.getElementById('videoStream').src = "/video_feed?t=" + new Date().getTime();
         }
 
         function showDeviceView() {
             document.getElementById('view-control').classList.remove('active');
             document.getElementById('view-devices').classList.add('active');
+            
+            // Останавливаем поток, когда уходим с экрана
+            document.getElementById('videoStream').src = "";
         }
 
         function scanDevices() {
@@ -205,7 +212,6 @@ def find_window_geometry(name_containing="OpenGL"):
                 geometry = win.get_geometry()
                 trans = win.translate_coords(root, 0, 0)
                 
-                # Принудительно конвертируем в int, чтобы MSS не падал
                 return {
                     'left': int(trans.x),
                     'top': int(trans.y),
@@ -217,14 +223,14 @@ def find_window_geometry(name_containing="OpenGL"):
     return None
 
 def generate_frames():
-    """Генератор MJPEG-видеопотока с захватом ОКНА UXPLAY"""
-    with mss.mss() as sct:
+    """Генератор MJPEG-видеопотока с захватом ОКНА"""
+    # ИСПРАВЛЕНИЕ ЗДЕСЬ: используем mss.MSS() вместо устаревшего mss.mss()
+    with mss.MSS() as sct:
         while True:
             monitor_bbox = find_window_geometry("OpenGL")
             
             if monitor_bbox is not None:
                 try:
-                    # Захватываем кадр
                     sct_img = sct.grab(monitor_bbox)
                     img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
                     
@@ -238,10 +244,9 @@ def generate_frames():
                     
                     time.sleep(0.05)
                 except Exception as e:
-                    print(f"\n[!] Ошибка создания скриншота MSS: {e}")
-                    print(f"[!] Окно найдено, но координаты кривые: {monitor_bbox}\n")
+                    print(f"\n[!] Ошибка создания скриншота: {e}\n")
                     
-                    # Отдаем темно-красный экран ошибки, чтобы UI не зависал
+                    # Отдаем темно-красный экран ошибки
                     img = Image.new('RGB', (640, 480), color=(50, 0, 0))
                     img_io = io.BytesIO()
                     img.save(img_io, format='JPEG', quality=20)
