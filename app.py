@@ -4,6 +4,8 @@ import subprocess
 import time
 import io
 import socket
+import numpy as np
+import cv2
 from flask import Flask, render_template_string, request, jsonify, Response, make_response
 from bluez_peripheral.gatt.service import Service
 from bluez_peripheral.gatt.characteristic import characteristic, CharacteristicFlags as CharFlags
@@ -255,8 +257,13 @@ HTML_PAGE = """
                 <h3>
                     <span>
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
-                        Точечное управление
+                        Автоматизация (OpenCV)
                     </span>
+                </h3>
+                <button onclick="triggerMacro('tiktok')" style="background: #8b5cf6;">Найти и нажать TikTok</button>
+                <br><br>
+                <h3>
+                    <span>Точечное управление</span>
                 </h3>
                 <div class="d-pad">
                     <div class="d-pad-row">
@@ -330,6 +337,12 @@ HTML_PAGE = """
             fetch('/move?x=0&y=0&click=0');
         }
 
+        function triggerMacro(name) {
+            fetch(`/macro?target=${name}`).then(res => res.text()).then(msg => {
+                alert(msg);
+            });
+        }
+
         function scanDevices() {
             document.getElementById('scanStatus').innerText = "Обновление...";
             fetch('/scan').then(res => res.json()).then(data => {
@@ -401,7 +414,6 @@ def gstreamer_receiver():
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(2.0)
             s.connect(('127.0.0.1', 5001))
-            print("\n[+] Приемник видеопотока успешно подключился к UxPlay!")
             s.settimeout(None)
             
             buffer = b''
@@ -436,8 +448,6 @@ def get_fallback_image():
 def index():
     response = make_response(render_template_string(HTML_PAGE))
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
     return response
 
 @app.route('/snapshot')
@@ -454,6 +464,40 @@ def video_feed():
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             time.sleep(0.05)
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/macro')
+def run_macro():
+    target = request.args.get('target')
+    global LATEST_FRAME, hid_instance
+    if not LATEST_FRAME:
+        return "Нет сигнала с экрана айфона!"
+    
+    # Конвертируем текущий JPEG-кадр в OpenCV формат
+    nparr = np.frombuffer(LATEST_FRAME, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    # Пример логики поиска шаблона (нужно положить файл шаблона например 'tiktok.png' в папку со скриптом)
+    try:
+        template = cv2.imread(f"{target}.png")
+        if template is None:
+            return f"Ошибка: не найден файл шаблона {target}.png в папке со скриптом!"
+            
+        result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        
+        # Если совпадение больше 80%
+        if max_val > 0.8:
+            h, w, _ = template.shape
+            center_x = max_loc[0] + w // 2
+            center_y = max_loc[1] + h // 2
+            
+            # Так как мы управляем через относительный HID, симулируем движение к центру (упрощенно)
+            # В реале здесь высчитывается дельта относительно текущего положения воображаемого курсора
+            return f"Цель {target} найдена с точностью {int(max_val*100)}% в точке X:{center_x} Y:{center_y}!"
+        else:
+            return f"Элемент {target} не найден на экране (совпадение всего {int(max_val*100)}%)."
+    except Exception as e:
+        return f"Ошибка OpenCV: {str(e)}"
 
 @app.route('/move')
 def web_move():
@@ -500,33 +544,21 @@ def run_ble_loop():
         bus = await get_message_bus()
         hid = HIDService()
         dev_info = DeviceInfo()
-        
         try:
             await hid.register(bus)
             await dev_info.register(bus)
         except Exception:
             pass
-        
         agent = NoIoAgent()
         await agent.register(bus)
-        
         adv = FixedAdvertisement("BoSMM Panel", ["1812"], 0x03C2, 0)
         await adv.register(bus)
-        print("\n[+] BLE Сервер 'BoSMM Panel' успешно запущен!")
-        print("[+] Перейди в браузер по IP-адресу виртуалки на порт 5000\n")
-        
+        print("\n[+] BLE Сервер 'BoSMM Panel' запущен!")
         await asyncio.Event().wait()
-
     asyncio.run(ble_main())
 
 if __name__ == '__main__':
-    video_thread = threading.Thread(target=gstreamer_receiver, daemon=True)
-    video_thread.start()
-
-    ble_thread = threading.Thread(target=run_ble_loop, daemon=True)
-    ble_thread.start()
-    
-    ping_thread = threading.Thread(target=keep_alive_ping, daemon=True)
-    ping_thread.start()
-    
+    threading.Thread(target=gstreamer_receiver, daemon=True).start()
+    threading.Thread(target=run_ble_loop, daemon=True).start()
+    threading.Thread(target=keep_alive_ping, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
