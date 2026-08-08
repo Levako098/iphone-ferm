@@ -638,7 +638,7 @@ def run_macro():
                 time.sleep(0.05)
                 hid_instance.input_report.changed(bytes([0, 0, 0])) # Отпускание
                 
-            return f"Цель {target} найдена (точность {int(max_val*100}%))! Клик отправлен на телефон."
+            return f"Цель {target} найдена (точность {int{max_val*100}%))! Клик отправлен на телефон."
         else:
             return f"Элемент {target} не найден на экране (совпадение {int(max_val*100}%)."
     except Exception as e:
