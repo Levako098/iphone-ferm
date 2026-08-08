@@ -98,16 +98,16 @@ HTML_PAGE = """
         }
         body { 
             font-family: 'Inter', sans-serif; 
-            text-align: left; /* Прижали всё влево */
+            text-align: left; 
             background: var(--bg-main); 
             color: var(--text-main); 
             margin: 0;
-            padding: 30px; /* Отступы от краев экрана */
+            padding: 30px; 
         }
         .container {
             display: flex;
             flex-direction: column;
-            align-items: flex-start; /* Элементы по левому краю */
+            align-items: flex-start; 
             gap: 20px;
             width: 100%;
             box-sizing: border-box;
@@ -117,40 +117,41 @@ HTML_PAGE = """
             padding: 24px; 
             border-radius: 16px; 
             box-shadow: 0 10px 40px rgba(0,0,0,0.4); 
-            width: 100%; 
-            max-width: 600px; 
+            /* МАГИЯ ЗДЕСЬ: Карточка облегает контент и не растягивается */
+            width: fit-content; 
+            min-width: 340px; 
             text-align: left;
             border: 1px solid var(--border);
             box-sizing: border-box;
         }
         
         h1 { color: #fff; font-size: 26px; font-weight: 700; margin-top: 0; margin-bottom: 30px; text-align: left; }
-        h3 { font-size: 18px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-top: 0; margin-bottom: 16px; color: #f5f5f5; display: flex; justify-content: space-between; align-items: center; }
+        h3 { font-size: 18px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-top: 0; margin-bottom: 16px; color: #f5f5f5; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
         
-        .loader { font-size: 12px; color: var(--accent); font-weight: normal; animation: pulse 1.5s infinite; }
+        .loader { font-size: 12px; color: var(--accent); font-weight: normal; animation: pulse 1.5s infinite; white-space: nowrap; }
         @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
 
         .device-grid {
             display: flex;
-            flex-direction: column; /* Список вниз, а не сетка */
+            flex-direction: column; 
             gap: 20px;
             margin-top: 20px;
             width: 100%;
         }
         
         .device-card {
-            background: transparent; /* Убрали серый фон */
-            border: none; /* Убрали рамку */
+            background: transparent; 
+            border: none; 
             padding: 0;
             cursor: pointer;
             transition: all 0.2s ease;
             position: relative;
             display: flex;
             flex-direction: column;
-            align-items: flex-start; /* Всё внутри карточки влево */
+            align-items: flex-start; 
         }
         .device-card:hover {
-            transform: translateX(5px); /* Анимация сдвига при наведении */
+            transform: translateX(5px); 
         }
         
         .device-name { font-weight: 600; color: #fff; font-size: 16px; word-break: break-word; text-align: left; }
@@ -158,11 +159,11 @@ HTML_PAGE = """
         
         .device-preview {
             width: 100%;
-            max-width: 300px; /* Ограничиваем ширину превью, чтобы не было огромным */
+            max-width: 300px; 
             height: auto;
             max-height: 400px; 
             object-fit: contain; 
-            object-position: left top; /* Прижимаем картинку в левый верхний угол! */
+            object-position: left top; 
             border-radius: 8px;
             margin-top: 10px;
             background: transparent; 
@@ -174,6 +175,7 @@ HTML_PAGE = """
             padding: 12px 18px; margin: 6px 0; cursor: pointer; 
             background: var(--accent); color: #fff; border: none; border-radius: 10px; 
             transition: 0.2s; display: inline-flex; justify-content: center; align-items: center; gap: 8px;
+            width: 100%;
         }
         button:hover { background: var(--accent-hover); transform: translateY(-2px); }
         button:active { transform: translateY(0); }
@@ -188,13 +190,13 @@ HTML_PAGE = """
             background: transparent; 
             border: none; 
             display: flex; 
-            justify-content: flex-start; /* Выравнивание основного видео влево */
+            justify-content: flex-start; 
         }
         .screen-preview img { 
             width: 100%; 
             height: 60vh; 
             object-fit: contain; 
-            object-position: left top; /* Видео прижато в левый верхний угол */
+            object-position: left top; 
             display: block; 
             border-radius: 12px;
         }
@@ -240,7 +242,8 @@ HTML_PAGE = """
     <!-- ЭКРАН 2: Управление -->
     <div id="view-control" class="view">
         <div class="container">
-            <div class="card" style="max-width: 800px;">
+            <!-- Тут возвращаем 100%, чтобы экран управления мог растянуться для видео -->
+            <div class="card" style="width: 100%; max-width: 800px;">
                 <h3>
                     <span>
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
@@ -252,7 +255,7 @@ HTML_PAGE = """
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card" style="width: 100%; max-width: 800px;">
                 <h3>
                     <span>
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
@@ -281,7 +284,7 @@ HTML_PAGE = """
                     </div>
                 </div>
                 <br>
-                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 15px;">
+                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 15px; width: auto;">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                     Назад в меню
                 </button>
@@ -408,7 +411,6 @@ def gstreamer_receiver():
             time.sleep(1)
 
 def get_fallback_image():
-    # Прозрачная заглушка под цвет карточки
     img = Image.new('RGB', (320, 240), color=(21, 21, 21))
     img_io = io.BytesIO()
     img.save(img_io, format='JPEG', quality=20)
