@@ -1,3 +1,1 @@
-python -m venv ~/ble_env
-source ~/ble_env/bin/activate
-pip install flask bluez-peripheral dbus-next mss pillow
+sudo pacman -S gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav
