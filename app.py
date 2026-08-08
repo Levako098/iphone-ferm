@@ -119,7 +119,6 @@ HTML_PAGE = """
         <div class="card">
             <h3>📱 Экран iPhone (через сервер)</h3>
             <div class="screen-preview">
-                <!-- Оставили src пустым, JS его заполнит -->
                 <img id="videoStream" src="" alt="Загрузка видеопотока...">
             </div>
         </div>
@@ -194,7 +193,7 @@ HTML_PAGE = """
 """
 
 def find_window_geometry(name_containing="OpenGL"):
-    """Находит координаты и размер окна X11 по части имени"""
+    """Находит координаты и размер окна X11 по части имени (с защитой от отрицательных координат)"""
     try:
         d = display.Display()
         root = d.screen().root
@@ -212,11 +211,24 @@ def find_window_geometry(name_containing="OpenGL"):
                 geometry = win.get_geometry()
                 trans = win.translate_coords(root, 0, 0)
                 
+                left = int(trans.x)
+                top = int(trans.y)
+                width = int(geometry.width)
+                height = int(geometry.height)
+                
+                # Защита от краша MSS: если окно вылезло за левый или верхний край экрана
+                if left < 0:
+                    width += left  
+                    left = 0
+                if top < 0:
+                    height += top  
+                    top = 0
+                
                 return {
-                    'left': int(trans.x),
-                    'top': int(trans.y),
-                    'width': int(geometry.width),
-                    'height': int(geometry.height)
+                    'left': left,
+                    'top': top,
+                    'width': width,
+                    'height': height
                 }
     except Exception as e:
         print("Ошибка Xlib при поиске окна:", e)
@@ -224,7 +236,6 @@ def find_window_geometry(name_containing="OpenGL"):
 
 def generate_frames():
     """Генератор MJPEG-видеопотока с захватом ОКНА"""
-    # ИСПРАВЛЕНИЕ ЗДЕСЬ: используем mss.MSS() вместо устаревшего mss.mss()
     with mss.MSS() as sct:
         while True:
             monitor_bbox = find_window_geometry("OpenGL")
