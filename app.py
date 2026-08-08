@@ -116,13 +116,10 @@ HTML_PAGE = """
             padding: 24px; 
             border-radius: 16px; 
             box-shadow: 0 10px 40px rgba(0,0,0,0.4); 
-            
-            /* ЖЕЛЕЗОБЕТОННОЕ ОГРАНИЧЕНИЕ ШИРИНЫ */
             display: inline-block; 
             width: max-content; 
             min-width: 320px;
             max-width: 100vw;
-            
             text-align: left;
             border: 1px solid var(--border);
             box-sizing: border-box;
@@ -153,9 +150,7 @@ HTML_PAGE = """
             flex-direction: column;
             align-items: flex-start; 
         }
-        .device-card:hover {
-            transform: translateX(5px); 
-        }
+        .device-card:hover { transform: translateX(5px); }
         
         .device-name { font-weight: 600; color: #fff; font-size: 16px; word-break: break-word; text-align: left; }
         .device-mac { font-size: 12px; color: var(--text-muted); margin-top: 4px; font-family: monospace; text-align: left; }
@@ -186,19 +181,24 @@ HTML_PAGE = """
         .secondary-btn { background: #1f1f1f; color: var(--text-main); border: 1px solid #333; }
         .secondary-btn:hover { background: #2a2a2a; }
         
+        /* Зона трансляции с возможностью зажатия и свайпов мышей */
         .screen-preview { 
             background: transparent; 
             border: none; 
             display: flex; 
             justify-content: flex-start; 
+            position: relative;
+            cursor: crosshair;
+            user-select: none;
         }
         .screen-preview img { 
-            height: 60vh; 
+            height: 50vh; 
             max-width: 100vw;
             object-fit: contain; 
             object-position: left top; 
             display: block; 
             border-radius: 12px;
+            pointer-events: none; /* Чтобы мышь кликала в контейнер, а не в картинку */
         }
         
         .view { display: none; animation: fadeIn 0.4s ease forwards; }
@@ -246,10 +246,11 @@ HTML_PAGE = """
                 <h3>
                     <span>
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                        Экран трансляции
+                        Экран трансляции (Зажми ЛКМ и двигай для свайпа)
                     </span>
                 </h3>
-                <div class="screen-preview">
+                <!-- Интерактивная зона тачпада поверх экрана -->
+                <div class="screen-preview" id="touchpad" onmousedown="startDrag(event)" onmousemove="onDrag(event)" onmouseup="endDrag()" onmouseleave="endDrag()">
                     <img id="videoStream" src="" alt="Ожидание трансляции...">
                 </div>
             </div>
@@ -258,7 +259,7 @@ HTML_PAGE = """
                 <h3>
                     <span>
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
-                        Управление курсором
+                        Точечное управление
                     </span>
                 </h3>
                 <div class="d-pad">
@@ -294,6 +295,7 @@ HTML_PAGE = """
     <script>
         let scanInterval;
         let previewIntervals = [];
+        let isDragging = false;
 
         window.onload = () => {
             scanDevices();
@@ -310,6 +312,30 @@ HTML_PAGE = """
             document.getElementById('view-control').classList.remove('active');
             document.getElementById('view-devices').classList.add('active');
             document.getElementById('videoStream').src = "";
+        }
+
+        // Логика тачпада (зажатие ЛКМ и перетаскивание)
+        function startDrag(e) {
+            isDragging = true;
+            // Делаем клик (зажимаем ЛКМ на айфоне)
+            fetch('/move?x=0&y=0&click=1');
+        }
+
+        function onDrag(e) {
+            if (!isDragging) return;
+            // Отправляем относительное движение мыши
+            let dx = e.movementX || e.moX || 0;
+            let dy = e.movementY || e.moY || 0;
+            if (dx !== 0 || dy !== 0) {
+                fetch(`/move?x=${dx * 1.5}&y=${dy * 1.5}&click=1`);
+            }
+        }
+
+        function endDrag() {
+            if (!isDragging) return;
+            isDragging = false;
+            // Отпускаем клик
+            fetch('/move?x=0&y=0&click=0');
         }
 
         function scanDevices() {
@@ -442,8 +468,8 @@ def video_feed():
 def web_move():
     global hid_instance
     if hid_instance:
-        x = int(request.args.get('x', 0))
-        y = int(request.args.get('y', 0))
+        x = int(float(request.args.get('x', 0)))
+        y = int(float(request.args.get('y', 0)))
         btn = int(request.args.get('click', 0))
         x_byte = x & 0xff
         y_byte = y & 0xff
