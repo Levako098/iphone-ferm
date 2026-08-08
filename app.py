@@ -143,16 +143,12 @@ HTML_PAGE = """
         function showControlView() {
             document.getElementById('view-devices').classList.remove('active');
             document.getElementById('view-control').classList.add('active');
-            
-            // Заставляем браузер загрузить поток заново, игнорируя кэш
             document.getElementById('videoStream').src = "/video_feed?t=" + new Date().getTime();
         }
 
         function showDeviceView() {
             document.getElementById('view-control').classList.remove('active');
             document.getElementById('view-devices').classList.add('active');
-            
-            // Останавливаем поток, когда уходим с экрана
             document.getElementById('videoStream').src = "";
         }
 
@@ -193,7 +189,7 @@ HTML_PAGE = """
 """
 
 def find_window_geometry(name_containing="OpenGL"):
-    """Находит координаты и размер окна X11 по части имени (с защитой от отрицательных координат)"""
+    """Ищет окно и отдает сырые координаты, как есть"""
     try:
         d = display.Display()
         root = d.screen().root
@@ -211,70 +207,57 @@ def find_window_geometry(name_containing="OpenGL"):
                 geometry = win.get_geometry()
                 trans = win.translate_coords(root, 0, 0)
                 
-                left = int(trans.x)
-                top = int(trans.y)
-                width = int(geometry.width)
-                height = int(geometry.height)
-                
-                # Защита от краша MSS: если окно вылезло за левый или верхний край экрана
-                if left < 0:
-                    width += left  
-                    left = 0
-                if top < 0:
-                    height += top  
-                    top = 0
-                
                 return {
-                    'left': left,
-                    'top': top,
-                    'width': width,
-                    'height': height
+                    'left': int(trans.x),
+                    'top': int(trans.y),
+                    'width': int(geometry.width),
+                    'height': int(geometry.height)
                 }
-    except Exception as e:
-        print("Ошибка Xlib при поиске окна:", e)
+    except Exception:
+        pass
     return None
 
 def generate_frames():
-    """Генератор MJPEG-видеопотока с захватом ОКНА"""
+    """Железобетонный захват: фоткаем весь экран, вырезаем окно средствами PIL"""
     with mss.MSS() as sct:
+        # Индекс 1 означает первый физический/виртуальный монитор целиком
+        monitor = sct.monitors[1]
+        
         while True:
-            monitor_bbox = find_window_geometry("OpenGL")
-            
-            if monitor_bbox is not None:
-                try:
-                    sct_img = sct.grab(monitor_bbox)
-                    img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+            try:
+                # 1. Безопасно фоткаем ВЕСЬ монитор (никаких ошибок X11 тут быть не может)
+                sct_img = sct.grab(monitor)
+                img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+                
+                # 2. Ищем координаты окна
+                monitor_bbox = find_window_geometry("OpenGL")
+                
+                # 3. Если окно найдено, вырезаем его из большого скриншота
+                if monitor_bbox is not None:
+                    # Высчитываем безопасные границы для обрезки (чтобы не выйти за пределы картинки)
+                    crop_left = max(0, monitor_bbox['left'])
+                    crop_top = max(0, monitor_bbox['top'])
+                    crop_right = min(monitor['width'], monitor_bbox['left'] + monitor_bbox['width'])
+                    crop_bottom = min(monitor['height'], monitor_bbox['top'] + monitor_bbox['height'])
                     
-                    img_io = io.BytesIO()
-                    img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-                    img.save(img_io, format='JPEG', quality=45)
-                    frame = img_io.getvalue()
-                    
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                    
-                    time.sleep(0.05)
-                except Exception as e:
-                    print(f"\n[!] Ошибка создания скриншота: {e}\n")
-                    
-                    # Отдаем темно-красный экран ошибки
-                    img = Image.new('RGB', (640, 480), color=(50, 0, 0))
-                    img_io = io.BytesIO()
-                    img.save(img_io, format='JPEG', quality=20)
-                    frame = img_io.getvalue()
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                    time.sleep(1.0)
-            else:
-                # Окно не найдено - отдаем черный экран
-                img = Image.new('RGB', (640, 480), color=(0, 0, 0))
+                    # Режем картинку
+                    if crop_right > crop_left and crop_bottom > crop_top:
+                        img = img.crop((crop_left, crop_top, crop_right, crop_bottom))
+                
+                # 4. Отправляем в веб
                 img_io = io.BytesIO()
-                img.save(img_io, format='JPEG', quality=20)
+                img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                img.save(img_io, format='JPEG', quality=45)
                 frame = img_io.getvalue()
                 
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                time.sleep(1.0)
+                
+                time.sleep(0.05)
+                
+            except Exception as e:
+                print(f"Ошибка кадра: {e}")
+                time.sleep(1)
 
 @app.route('/')
 def index():
@@ -319,7 +302,6 @@ def scan():
     return jsonify(devices)
 
 def keep_alive_ping():
-    """Фоновый пинг, чтобы iOS не отключала мышь из-за неактивности"""
     while True:
         time.sleep(10)
         global hid_instance
