@@ -589,6 +589,7 @@ def save_template():
 
     cv2.imwrite(f"{name}.png", crop_img)
     return f"Шаблон '{name}.png' успешно сохранен!"
+
 @app.route('/macro')
 def run_macro():
     target = request.args.get('target')
@@ -612,35 +613,22 @@ def run_macro():
             center_x = max_loc[0] + w // 2
             center_y = max_loc[1] + h // 2
             
-            # РЕАЛИЗУЕМ КЛИК ЧЕРЕЗ BLUETOOTH HID
             if hid_instance:
-                # Допустим, мы считаем, что виртуальный курсор сейчас примерно в центре экрана или около того.
-                # Чтобы сдвинуть курсор к нужным координатам, отправляем относительный сдвиг.
-                # (Для точного попадания лучше предварительно откалибровать центр, но сделаем базовый сдвиг)
-                
-                # Упрощенный пример: делаем сдвиг и клик
-                # Поскольку точное абсолютное положение мыши по BT неизвестно, 
-                # мы можем сбросить её в угол или двигать короткими шагами.
-                
-                # Имитируем быстрый прыжок к координатам (отправляем пачку движений)
                 steps = 10
-                # Допустим, текущий курсор в центре кадра превью (предположим размеры кадра примерно соответствуют)
-                # Перемещаем мышь дельтами:
-                dx = int((center_x - 160) / steps) # условно под размер превью
+                dx = int((center_x - 160) / steps)
                 dy = int((center_y - 240) / steps)
                 
                 for _ in range(steps):
                     hid_instance.input_report.changed(bytes([0, dx & 0xff, dy & 0xff]))
                     time.sleep(0.01)
                 
-                # Кликаем ЛКМ
-                hid_instance.input_report.changed(bytes([1, 0, 0])) # Зажим
+                hid_instance.input_report.changed(bytes([1, 0, 0]))
                 time.sleep(0.05)
-                hid_instance.input_report.changed(bytes([0, 0, 0])) # Отпускание
+                hid_instance.input_report.changed(bytes([0, 0, 0]))
                 
-            return f"Цель {target} найдена (точность {int{max_val*100}%))! Клик отправлен на телефон."
+            return f"Цель {target} найдена (точность {int(max_val*100)}%)! Клик отправлен на телефон."
         else:
-            return f"Элемент {target} не найден на экране (совпадение {int(max_val*100}%)."
+            return f"Элемент {target} не найден на экране (совпадение {int(max_val*100)}%)."
     except Exception as e:
         return f"Ошибка OpenCV/Клика: {str(e)}"
 
