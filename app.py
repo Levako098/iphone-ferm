@@ -600,7 +600,6 @@ def run_macro():
     nparr = np.frombuffer(LATEST_FRAME, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
-    # Узнаем реальные размеры кадра трансляции
     frame_h, frame_w, _ = img.shape
     
     try:
@@ -611,22 +610,20 @@ def run_macro():
         result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         
+        match_percent = int(max_val * 100)
+        
         if max_val > 0.75:
             h, w, _ = template.shape
             center_x = max_loc[0] + w // 2
             center_y = max_loc[1] + h // 2
             
             if hid_instance:
-                # 1. Сбрасываем курсор в левый верхний угол (убегаем влево-вверх до упора)
                 for _ in range(5):
                     hid_instance.input_report.changed(bytes([0, -127, -127]))
                     time.sleep(0.01)
                 
-                # Небольшая пауза на стабилизацию
                 time.sleep(0.05)
                 
-                # 2. Теперь ведем курсор из угла (0,0) точно в точку center_x, center_y
-                # Разобьем путь на шаги, чтобы мышь не телепортировалась, а плавно доехала
                 steps = 15
                 step_x = center_x / steps
                 step_y = center_y / steps
@@ -637,16 +634,15 @@ def run_macro():
                     hid_instance.input_report.changed(bytes([0, dx & 0xff, dy & 0xff]))
                     time.sleep(0.01)
                 
-                # 3. Кликаем ЛКМ в найденной точке
-                hid_instance.input_report.changed(bytes([1, 0, 0])) # Зажатие
+                hid_instance.input_report.changed(bytes([1, 0, 0]))
                 time.sleep(0.08)
-                hid_instance.input_report.changed(bytes([0, 0, 0])) # Отпускание
+                hid_instance.input_report.changed(bytes([0, 0, 0]))
                 
-            return f"Цель {target} найдена ({int(max_val*100)}%). Курсор откалиброван и совершен клик в X:{center_x} Y:{center_y}!"
+            return f"Цель {target} найдена (точность {match_percent} пункта)! Клик отправлен."
         else:
-            return f"Элемент {target} не найден на экране (совпадение {int{max_val*10}%)."
+            return f"Элемент {target} не найден (совпадение {match_percent} пункта)."
     except Exception as e:
-        return f"Ошибка OpenCV/Клика: {str(e)}"
+        return f"Ошибка: {str(e)}"
 
 @app.route('/move')
 def web_move():
