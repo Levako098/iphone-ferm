@@ -109,7 +109,6 @@ HTML_PAGE = """
             flex-direction: column;
             align-items: flex-start; 
             gap: 20px;
-            width: 100%;
             box-sizing: border-box;
         }
         .card { 
@@ -117,9 +116,13 @@ HTML_PAGE = """
             padding: 24px; 
             border-radius: 16px; 
             box-shadow: 0 10px 40px rgba(0,0,0,0.4); 
-            /* МАГИЯ ЗДЕСЬ: Карточка облегает контент и не растягивается */
-            width: fit-content; 
-            min-width: 340px; 
+            
+            /* ЖЕЛЕЗОБЕТОННОЕ ОГРАНИЧЕНИЕ ШИРИНЫ */
+            display: inline-block; 
+            width: max-content; 
+            min-width: 320px;
+            max-width: 100vw;
+            
             text-align: left;
             border: 1px solid var(--border);
             box-sizing: border-box;
@@ -136,7 +139,7 @@ HTML_PAGE = """
             flex-direction: column; 
             gap: 20px;
             margin-top: 20px;
-            width: 100%;
+            align-items: flex-start;
         }
         
         .device-card {
@@ -158,7 +161,6 @@ HTML_PAGE = """
         .device-mac { font-size: 12px; color: var(--text-muted); margin-top: 4px; font-family: monospace; text-align: left; }
         
         .device-preview {
-            width: 100%;
             max-width: 300px; 
             height: auto;
             max-height: 400px; 
@@ -175,7 +177,6 @@ HTML_PAGE = """
             padding: 12px 18px; margin: 6px 0; cursor: pointer; 
             background: var(--accent); color: #fff; border: none; border-radius: 10px; 
             transition: 0.2s; display: inline-flex; justify-content: center; align-items: center; gap: 8px;
-            width: 100%;
         }
         button:hover { background: var(--accent-hover); transform: translateY(-2px); }
         button:active { transform: translateY(0); }
@@ -186,22 +187,21 @@ HTML_PAGE = """
         .secondary-btn:hover { background: #2a2a2a; }
         
         .screen-preview { 
-            width: 100%; 
             background: transparent; 
             border: none; 
             display: flex; 
             justify-content: flex-start; 
         }
         .screen-preview img { 
-            width: 100%; 
             height: 60vh; 
+            max-width: 100vw;
             object-fit: contain; 
             object-position: left top; 
             display: block; 
             border-radius: 12px;
         }
         
-        .view { display: none; animation: fadeIn 0.4s ease forwards; width: 100%; }
+        .view { display: none; animation: fadeIn 0.4s ease forwards; }
         .active { display: flex; flex-direction: column; align-items: flex-start; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
@@ -242,8 +242,7 @@ HTML_PAGE = """
     <!-- ЭКРАН 2: Управление -->
     <div id="view-control" class="view">
         <div class="container">
-            <!-- Тут возвращаем 100%, чтобы экран управления мог растянуться для видео -->
-            <div class="card" style="width: 100%; max-width: 800px;">
+            <div class="card">
                 <h3>
                     <span>
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
@@ -255,7 +254,7 @@ HTML_PAGE = """
                 </div>
             </div>
 
-            <div class="card" style="width: 100%; max-width: 800px;">
+            <div class="card">
                 <h3>
                     <span>
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
@@ -284,7 +283,7 @@ HTML_PAGE = """
                     </div>
                 </div>
                 <br>
-                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 15px; width: auto;">
+                <button class="secondary-btn" onclick="showDeviceView()" style="margin-top: 15px;">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                     Назад в меню
                 </button>
