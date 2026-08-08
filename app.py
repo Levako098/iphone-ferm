@@ -4,7 +4,6 @@ import subprocess
 import time
 import io
 import socket
-import os
 import numpy as np
 import cv2
 from flask import Flask, render_template_string, request, jsonify, Response, make_response
@@ -79,6 +78,24 @@ class FixedAdvertisement(Advertisement):
         props = await super().get_properties()
         props["TxPower"] = Variant('n', 0)
         return props
+
+def safe_byte(val):
+    """Безопасно приводит целое число к диапазону байт 0..255 (двухдопочниковый формат)"""
+    ival = int(round(val))
+    ival = max(-127, min(127, ival))
+    return ival & 0xff
+
+def send_hid_move(dx, dy, click=0):
+    """Универсальная безопасная отправка перемещения мыши"""
+    global hid_instance
+    if hid_instance:
+        try:
+            b_click = 1 if click else 0
+            b_x = safe_byte(dx)
+            b_y = safe_byte(dy)
+            hid_instance.input_report.changed(bytes([b_click, b_x, b_y]))
+        except Exception as e:
+            print(f"[HID Error] {e}")
 
 HTML_PAGE = """
 <!DOCTYPE html>
@@ -206,7 +223,6 @@ HTML_PAGE = """
             border-radius: 12px;
         }
         
-        /* Холст для выделения рамкой */
         #cropCanvas {
             position: absolute;
             left: 0;
@@ -336,7 +352,6 @@ HTML_PAGE = """
             document.getElementById('videoStream').src = "";
         }
 
-        // Логика выделения рамкой прямо на картинке стрима
         function initCropper() {
             const canvas = document.getElementById('cropCanvas');
             const ctx = canvas.getContext('2d');
@@ -385,7 +400,6 @@ HTML_PAGE = """
                 let name = prompt("Введите имя для этого шаблона (например: tiktok):", "tiktok");
                 if (!name) return;
 
-                // Передаем координаты и размеры оригинального изображения в процентах/пикселях на сервер
                 const scaleX = img.naturalWidth / img.clientWidth;
                 const scaleY = img.naturalHeight / img.clientHeight;
 
@@ -582,18 +596,17 @@ def save_template():
     nparr = np.frombuffer(LATEST_FRAME, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    # Вырезаем область по координатам рамки
     crop_img = img[y:y+h, x:x+w]
     if crop_img.size == 0:
         return "Ошибка обрезки изображения!"
 
     cv2.imwrite(f"{name}.png", crop_img)
-    return f"Шаблон '{name}.png' успешно сохранен!"
+    return f"Шаблон {name}.png успешно сохранен!"
 
 @app.route('/macro')
 def run_macro():
     target = request.args.get('target')
-    global LATEST_FRAME, hid_instance
+    global LATEST_FRAME
     if not LATEST_FRAME:
         return "Нет сигнала с экрана айфона!"
     
@@ -612,58 +625,55 @@ def run_macro():
         
         match_percent = int(max_val * 100)
         
-        if max_val > 0.75:
+        if max_val > 0.70:
             h, w, _ = template.shape
             center_x = max_loc[0] + w // 2
             center_y = max_loc[1] + h // 2
             
-            if hid_instance:
-                for _ in range(5):
-                    hid_instance.input_report.changed(bytes([0, -127, -127]))
-                    time.sleep(0.01)
+            # Калибровка и перемещение к цели
+            # 1. Уводим курсор в левый верхний угол (0,0)
+            for _ in range(8):
+                send_hid_move(-127, -127, click=0)
+                time.sleep(0.01)
+            
+            time.sleep(0.05)
+            
+            # 2. Рассчитываем пропорцию смещения по Bluetooth HID относительно разрешения кадра
+            # Отношение разрешения кадра к виртуальной сетке iOS
+            scale_factor = 0.65 
+            target_dx = center_x * scale_factor
+            target_dy = center_y * scale_factor
+            
+            steps = 20
+            step_x = target_dx / steps
+            step_y = target_dy / steps
+            
+            for _ in range(steps):
+                send_hid_move(step_x, step_y, click=0)
+                time.sleep(0.01)
+            
+            time.sleep(0.05)
+            
+            # 3. Клик
+            send_hid_move(0, 0, click=1)
+            time.sleep(0.08)
+            send_hid_move(0, 0, click=0)
                 
-                time.sleep(0.05)
-                
-                steps = 15
-                step_x = center_x / steps
-                step_y = center_y / steps
-                
-                for _ in range(steps):
-                    dx = max(-127, min(127, int(step_x)))
-                    dy = max(-127, min(127, int(step_y)))
-                    hid_instance.input_report.changed(bytes([0, dx & 0xff, dy & 0xff]))
-                    time.sleep(0.01)
-                
-                hid_instance.input_report.changed(bytes([1, 0, 0]))
-                time.sleep(0.08)
-                hid_instance.input_report.changed(bytes([0, 0, 0]))
-                
-            return f"Цель {target} найдена (точность {match_percent} пункта)! Клик отправлен."
+            return f"Цель {target} найдена (совпадение {match_percent} пунктов). Клик отправлен!"
         else:
-            return f"Элемент {target} не найден (совпадение {match_percent} пункта)."
+            return f"Элемент {target} не найден на экране (совпадение {match_percent} пунктов)."
     except Exception as e:
-        return f"Ошибка: {str(e)}"
-        
+        return f"Ошибка автоматизации: {str(e)}"
+
 @app.route('/move')
 def web_move():
-    global hid_instance
-    if hid_instance:
-        try:
-            x = int(float(request.args.get('x', 0)))
-            y = int(float(request.args.get('y', 0)))
-            btn = int(request.args.get('click', 0))
-            
-            # Жестко ограничиваем смещение в диапазоне от -127 до 127 для относительных отчетов мыши
-            x = max(-127, min(127, x))
-            y = max(-127, min(127, y))
-            
-            # Превращаем в байты без риска вылета за диапазон 0-255
-            x_byte = x & 0xff
-            y_byte = y & 0xff
-            
-            hid_instance.input_report.changed(bytes([btn, x_byte, y_byte]))
-        except Exception as e:
-            print(f"Ошибка перемещения: {e}")
+    try:
+        x = float(request.args.get('x', 0))
+        y = float(request.args.get('y', 0))
+        btn = int(request.args.get('click', 0))
+        send_hid_move(x, y, btn)
+    except Exception as e:
+        print(f"Ошибка ручного перемещения: {e}")
     return "OK"
 
 @app.route('/scan')
@@ -684,12 +694,7 @@ def scan():
 def keep_alive_ping():
     while True:
         time.sleep(10)
-        global hid_instance
-        if hid_instance:
-            try:
-                hid_instance.input_report.changed(bytes([0, 0, 0]))
-            except Exception:
-                pass
+        send_hid_move(0, 0, 0)
 
 def run_ble_loop():
     async def ble_main():
