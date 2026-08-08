@@ -188,7 +188,7 @@ HTML_PAGE = """
 </html>
 """
 
-def find_window_geometry(name_containing="UxPlay"):
+def find_window_geometry(name_containing="OpenGL"):
     """Находит координаты и размер окна X11 по части имени с отладкой"""
     try:
         d = display.Display()
@@ -205,11 +205,11 @@ def find_window_geometry(name_containing="UxPlay"):
             wm_name = win.get_wm_name()
             if wm_name and name_containing.lower() in wm_name.lower():
                 geometry = win.get_geometry()
-                trans = root.translate_coords(win, 0, 0)
+                trans = win.translate_coords(root, 0, 0)
                 
                 return {
-                    'left': trans.x_dst,
-                    'top': trans.y_dst,
+                    'left': trans.x,
+                    'top': trans.y,
                     'width': geometry.width,
                     'height': geometry.height
                 }
@@ -221,7 +221,8 @@ def generate_frames():
     """Генератор MJPEG-видеопотока с захватом ОКНА UXPLAY"""
     with mss.mss() as sct:
         while True:
-            monitor_bbox = find_window_geometry("UxPlay")
+            # Ищем окно с названием, содержащим "OpenGL"
+            monitor_bbox = find_window_geometry("OpenGL")
             
             if monitor_bbox is not None:
                 try:
