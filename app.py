@@ -644,7 +644,7 @@ def run_macro():
                 
             return f"Цель {target} найдена ({int(max_val*100)}%). Курсор откалиброван и совершен клик в X:{center_x} Y:{center_y}!"
         else:
-            return f"Элемент {target} не найден на экране (совпадение {int(max_val*100}%)."
+            return f"Элемент {target} не найден на экране (совпадение {int(max_val*10)%)."
     except Exception as e:
         return f"Ошибка OpenCV/Клика: {str(e)}"
 
