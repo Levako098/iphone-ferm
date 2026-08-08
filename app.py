@@ -4,7 +4,7 @@ import subprocess
 import time
 import io
 import socket
-from flask import Flask, render_template_string, request, jsonify, Response
+from flask import Flask, render_template_string, request, jsonify, Response, make_response
 from bluez_peripheral.gatt.service import Service
 from bluez_peripheral.gatt.characteristic import characteristic, CharacteristicFlags as CharFlags
 from bluez_peripheral.gatt.descriptor import descriptor, DescriptorFlags as DescFlags
@@ -17,7 +17,6 @@ from PIL import Image
 
 app = Flask(__name__)
 hid_instance = None
-
 LATEST_FRAME = None
 
 MOUSE_REPORT_MAP = bytes([
@@ -163,11 +162,11 @@ HTML_PAGE = """
         
         .device-preview {
             width: 100%;
-            height: 300px; /* Достаточно высоты для фулл экрана */
-            object-fit: contain; /* Никакой обрезки, вписывает картинку целиком */
+            height: 300px; 
+            object-fit: contain; 
             border-radius: 10px;
             margin-top: 16px;
-            background: transparent; /* Убрали уебищный черный фон */
+            background: transparent; 
             border: none;
         }
 
@@ -187,7 +186,7 @@ HTML_PAGE = """
         
         .screen-preview { 
             width: 100%; 
-            background: transparent; /* Убрали рамки у главного потока тоже */
+            background: transparent; 
             border: none; 
             display: flex; 
             justify-content: center; 
@@ -195,7 +194,7 @@ HTML_PAGE = """
         .screen-preview img { 
             width: 100%; 
             height: 60vh; 
-            object-fit: contain; /* Фулл экран без обрезки */
+            object-fit: contain; 
             display: block; 
             border-radius: 12px;
         }
@@ -231,7 +230,7 @@ HTML_PAGE = """
                 </h3>
                 <div class="device-grid" id="deviceGrid"></div>
                 <button class="secondary-btn" onclick="showControlView()" style="margin-top: 30px;">
-                    Я уже подключил мышь
+                    Я уже подключил
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                 </button>
             </div>
@@ -242,14 +241,24 @@ HTML_PAGE = """
     <div id="view-control" class="view">
         <div class="container">
             <div class="card">
-                <h3>📱 Экран iPhone</h3>
+                <h3>
+                    <span>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        Экран трансляции
+                    </span>
+                </h3>
                 <div class="screen-preview">
                     <img id="videoStream" src="" alt="Ожидание трансляции...">
                 </div>
             </div>
 
             <div class="card">
-                <h3>🖱️ Управление</h3>
+                <h3>
+                    <span>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; vertical-align: bottom; margin-right: 6px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                        Управление курсором
+                    </span>
+                </h3>
                 <div class="d-pad">
                     <div class="d-pad-row">
                         <button onclick="move(0, -30)">
@@ -399,15 +408,20 @@ def gstreamer_receiver():
             time.sleep(1)
 
 def get_fallback_image():
-    # Цвет фона совпадает с цветом карточки (1a1a1a), чтобы не было видно квадратов
-    img = Image.new('RGB', (320, 240), color=(26, 26, 26))
+    # Прозрачная заглушка (цвета карточки)
+    img = Image.new('RGB', (320, 240), color=(21, 21, 21))
     img_io = io.BytesIO()
     img.save(img_io, format='JPEG', quality=20)
     return img_io.getvalue()
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_PAGE)
+    # Жесткий запрет браузеру кэшировать HTML-страницу!
+    response = make_response(render_template_string(HTML_PAGE))
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 @app.route('/snapshot')
 def snapshot():
